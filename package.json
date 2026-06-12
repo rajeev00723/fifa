@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Live + historical FIFA World Cup analytics. Vercel serverless + cached provider feed.",
+  "description": "Live + historical FIFA World Cup analytics. serverless + cached provider feed.",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel --prod"

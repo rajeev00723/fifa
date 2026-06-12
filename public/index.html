@@ -503,8 +503,57 @@ function Simulator(){
   </div>);
 }
 
+/* ===================== ALERTS (email subscriptions) ===================== */
+function Alerts(){
+  const teams=Object.keys(M.RATINGS).sort();
+  const [email,setEmail]=useState("");
+  const [scope,setScope]=useState("all");
+  const [team,setTeam]=useState(teams[0]);
+  const [player,setPlayer]=useState("");
+  const [status,setStatus]=useState(null); // {ok, msg}
+  const [busy,setBusy]=useState(false);
+  async function submit(){
+    setBusy(true); setStatus(null);
+    const target = scope==="team"?team : scope==="player"?player : null;
+    try{
+      const r=await fetch("/api/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,scope,target})});
+      const j=await r.json();
+      if(!r.ok) throw new Error(j.error||"Failed");
+      setStatus({ok:true,msg:j.message||"Check your email to confirm."});
+    }catch(e){ setStatus({ok:false,msg:e.message}); }
+    setBusy(false);
+  }
+  const scopes=[["all","All matches"],["goals","Goals & key moments"],["team","A specific team"],["player","A specific player"]];
+  return (<div>
+    <H2 eyebrow="Notifications" title="Match alerts by email"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 20px",maxWidth:560}}>Get an email when things happen — every match, just goals, or only your team or player. We'll send a confirmation link first; nothing arrives until you click it. Unsubscribe anytime from any email.</p>
+    <Panel style={{maxWidth:520}}>
+      <div style={{marginBottom:16}}>
+        <div style={{font:`600 10px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6,textTransform:"uppercase"}}>Email</div>
+        <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={{width:"100%",font:`500 14px ${display}`,padding:"11px 12px",color:C.chalk,background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:3}}/>
+      </div>
+      <div style={{marginBottom:16}}>
+        <div style={{font:`600 10px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:8,textTransform:"uppercase"}}>Notify me about</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {scopes.map(([v,label])=>(
+            <button key={v} onClick={()=>setScope(v)} style={{font:`600 13px ${display}`,padding:"10px",cursor:"pointer",borderRadius:3,textAlign:"left",border:`1px solid ${scope===v?C.gold:C.line}`,background:scope===v?"rgba(232,184,75,.1)":"transparent",color:scope===v?C.gold:C.mute}}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {scope==="team" && <div style={{marginBottom:16}}><Select label="Team" value={team} onChange={setTeam} options={teams}/></div>}
+      {scope==="player" && <div style={{marginBottom:16}}>
+        <div style={{font:`600 10px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6,textTransform:"uppercase"}}>Player name</div>
+        <input value={player} onChange={e=>setPlayer(e.target.value)} placeholder="e.g. Lionel Messi" style={{width:"100%",font:`500 14px ${display}`,padding:"11px 12px",color:C.chalk,background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:3}}/>
+        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:6}}>Match the name as it appears in the scorer list. Alerts fire when they score.</div>
+      </div>}
+      <button onClick={submit} disabled={busy||!email} style={{width:"100%",font:`700 14px ${display}`,padding:"12px",cursor:busy?"default":"pointer",borderRadius:4,border:"none",background:busy?C.goldDim:C.gold,color:C.pitch}}>{busy?"Sending…":"Subscribe"}</button>
+      {status && <div style={{marginTop:14,padding:"10px 12px",borderRadius:4,font:`13px/1.4 ${display}`,background:status.ok?"rgba(63,174,111,.12)":"rgba(217,84,63,.12)",color:status.ok?C.grass:C.red,border:`1px solid ${status.ok?C.grass:C.red}`}}>{status.msg}</div>}
+    </Panel>
+  </div>);
+}
+
 /* ===================== SHELL ===================== */
-const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor]];
+const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
 function App(){
   const [tab,setTab]=useState(0); const Active=NAV[tab][1];
   const [matchId,setMatchId]=useState(null);

@@ -102,4 +102,4 @@ else changes.
 - `football-data.org` coverage of deep stats (xG, lineups) is limited on free;
   the swap-the-adapter design is there for when you outgrow it.
 - This is the live-data layer + a lean frontend. The predictive models, fantasy
-  module, and other features from the original brief are separate builds.
+  module, and other features from the origidnal brief are separate builds.
