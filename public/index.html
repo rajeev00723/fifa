@@ -59,6 +59,10 @@ const H2 = ({eyebrow,title,right}) => (
   </div>
 );
 const Empty = ({children}) => <div style={{font:`13px ${display}`,color:C.mute,padding:"10px 0"}}>{children}</div>;
+// Team crest thumbnail. Falls back to a neutral dot if the feed has no crest yet.
+const Crest = ({src,size=22}) => src
+  ? <img src={src} alt="" width={size} height={size} loading="lazy" style={{objectFit:"contain",flexShrink:0,filter:"drop-shadow(0 1px 2px rgba(0,0,0,.4))"}} onError={e=>{e.target.style.visibility="hidden";}}/>
+  : <span style={{width:size,height:size,borderRadius:"50%",background:C.pitch2,border:`1px solid ${C.line}`,display:"inline-block",flexShrink:0}}/>;
 const Select = ({label,value,onChange,options}) => (
   <label style={{flex:1,minWidth:140}}>
     <div style={{font:`600 10px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6,textTransform:"uppercase"}}>{label}</div>
@@ -77,11 +81,11 @@ function Live() {
   useEffect(()=>{ load(); timer.current=setInterval(load,REFRESH_MS); const t=setInterval(()=>setSecs(s=>s>0?s-1:0),1000); return()=>{clearInterval(timer.current);clearInterval(t);}; },[]);
   const Row=({m})=>(
     <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${C.line}`}}>
-      <div style={{flex:1,textAlign:"right",font:`600 15px ${display}`}}>{m.home.name}</div>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:9,font:`600 15px ${display}`}}><span>{m.home.name}</span><Crest src={m.home.crest}/></div>
       <div style={{display:"flex",gap:6,alignItems:"center",minWidth:90,justifyContent:"center"}}>
         <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.home.score??"–"}</span><span style={{color:C.mute}}>:</span><span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score??"–"}</span>
       </div>
-      <div style={{flex:1,font:`600 15px ${display}`}}>{m.away.name}</div>
+      <div style={{flex:1,display:"flex",alignItems:"center",gap:9,font:`600 15px ${display}`}}><Crest src={m.away.crest}/><span>{m.away.name}</span></div>
       <div style={{width:70,textAlign:"right",font:`600 11px ${mono}`,color:m.status==="LIVE"?C.red:C.mute}}>{m.status==="LIVE"?(m.minute?m.minute+"'":"LIVE"):m.status==="FINISHED"?"FT":new Date(m.utcKickoff).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
     </div>
   );
@@ -328,7 +332,11 @@ function App(){
       {NAV.map(([label],i)=>(<button key={label} onClick={()=>setTab(i)} style={{font:`700 13px ${display}`,padding:"16px 16px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap"}}>{label}</button>))}
     </nav>
     <main style={{maxWidth:1000,margin:"0 auto",padding:"34px 28px 80px"}}><Active/></main>
-    <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.5 ${mono}`,color:C.mute,textAlign:"center"}}>Live data via football-data.org, cached server-side. Historical 1930–2022. Predictions are transparent Elo-model estimates, not statements of fact.</footer>
+    <footer style={{borderTop:`1px solid ${C.line}`,padding:"22px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center"}}>
+      <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
+      <div style={{marginTop:8}}>Live data via football-data.org, cached server-side · Historical 1930–2022 · Predictions are transparent Elo-model estimates, not statements of fact.</div>
+      <div style={{marginTop:8}}>Made by Rajeev · rajeevbuilds.dev</div>
+    </footer>
   </div>);
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);

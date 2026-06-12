@@ -49,8 +49,13 @@ aren't shared between them. To fix:
   them automatically — no code change.
 
 ### 5. Choose your refresh strategy
-- **Staying on Hobby (free):** do nothing. The pull-through cache handles it.
-  The included `vercel.json` cron is set to once-daily so deployment won't fail.
+- **Staying on Hobby (free):** the pull-through cache keeps data fresh from
+  visitor traffic during matches, so you're covered even without a working cron.
+  NOTE: `vercel.json` is set to a 2-hour schedule (`0 */2 * * *`). **Vercel Hobby
+  rejects anything more frequent than once per day at deploy time** — if your
+  deploy fails with a cron error, change the schedule to `0 12 * * *` (daily) or
+  upgrade to Pro. The 2-hour cron only actually runs on Pro or via an external
+  scheduler.
 - **Want minute-level push refresh for free:** use an external scheduler.
   1. Sign up at cron-job.org (free).
   2. Point it at `https://YOUR-APP.vercel.app/api/cron/refresh` every 1–2 minutes.
@@ -98,4 +103,3 @@ else changes.
   the swap-the-adapter design is there for when you outgrow it.
 - This is the live-data layer + a lean frontend. The predictive models, fantasy
   module, and other features from the original brief are separate builds.
-# fifa
