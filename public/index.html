@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>World Cup Intelligence Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --pitch:#0a1f1a; --pitch2:#0f2a22; --panel:#10241d; --line:#1d3b31;
+    --gold:#e8b84b; --gold-dim:#9a7c33; --chalk:#eef3ee; --mute:#7e9a8c; --grass:#3fae6f; --red:#d9543f;
+    --mono:'JetBrains Mono',ui-monospace,monospace; --display:'Archivo','Arial Narrow',sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--pitch); color:var(--chalk); font-family:var(--display); }
+  button:focus-visible, select:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+  select option { background:var(--pitch2); }
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important;} }
+  .pulse { width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;animation:p 1.4s infinite; }
+  @keyframes p { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+  ::-webkit-scrollbar{height:8px;width:8px;} ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useRef } = React;
+
+const C = {
+  pitch:"#0a1f1a", pitch2:"#0f2a22", panel:"#10241d", line:"#1d3b31",
+  gold:"#e8b84b", goldDim:"#9a7c33", chalk:"#eef3ee", mute:"#7e9a8c", grass:"#3fae6f", red:"#d9543f",
+};
+const mono="'JetBrains Mono',ui-monospace,monospace";
+const display="'Archivo','Arial Narrow',sans-serif";
+const REFRESH_MS = 60000;
+
+/* ---------- historical data (men's WC 1930–2022) ---------- */
+const TOURNAMENTS = [
+  {year:1930,host:"Uruguay",teams:13,winner:"Uruguay",runnerUp:"Argentina",goals:70,matches:18},
+  {year:1950,host:"Brazil",teams:13,winner:"Uruguay",runnerUp:"Brazil",goals:88,matches:22},
+  {year:1954,host:"Switzerland",teams:16,winner:"West Germany",runnerUp:"Hungary",goals:140,matches:26},
+  {year:1958,host:"Sweden",teams:16,winner:"Brazil",runnerUp:"Sweden",goals:126,matches:35},
+  {year:1970,host:"Mexico",teams:16,winner:"Brazil",runnerUp:"Italy",goals:95,matches:32},
+  {year:1974,host:"West Germany",teams:16,winner:"West Germany",runnerUp:"Netherlands",goals:97,matches:38},
+  {year:1986,host:"Mexico",teams:24,winner:"Argentina",runnerUp:"West Germany",goals:132,matches:52},
+  {year:1998,host:"France",teams:32,winner:"France",runnerUp:"Brazil",goals:171,matches:64},
+  {year:2002,host:"Korea/Japan",teams:32,winner:"Brazil",runnerUp:"Germany",goals:161,matches:64},
+  {year:2014,host:"Brazil",teams:32,winner:"Germany",runnerUp:"Argentina",goals:171,matches:64},
+  {year:2018,host:"Russia",teams:32,winner:"France",runnerUp:"Croatia",goals:169,matches:64},
+  {year:2022,host:"Qatar",teams:32,winner:"Argentina",runnerUp:"France",goals:172,matches:64},
+];
+const TITLES = {Brazil:5,Germany:4,Italy:4,Argentina:3,France:2,Uruguay:2,England:1,Spain:1};
+
+/* ---------- UI atoms ---------- */
+const Eyebrow = ({children}) => <div style={{font:`600 11px/1 ${mono}`,letterSpacing:".22em",textTransform:"uppercase",color:C.gold}}>{children}</div>;
+const Panel = ({children,style}) => <div style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:4,padding:20,...style}}>{children}</div>;
+const Stat = ({label,value,accent}) => (
+  <div style={{borderLeft:`2px solid ${accent||C.line}`,paddingLeft:12}}>
+    <div style={{font:`700 24px/1 ${display}`,color:C.chalk}}>{value}</div>
+    <div style={{font:`500 10px/1.3 ${mono}`,letterSpacing:".12em",textTransform:"uppercase",color:C.mute,marginTop:6}}>{label}</div>
+  </div>
+);
+
+/* ---------- LIVE tab ---------- */
+function Live() {
+  const [data,setData] = useState(null);
+  const [err,setErr] = useState(null);
+  const [secs,setSecs] = useState(REFRESH_MS/1000);
+  const timer = useRef(null);
+
+  async function load() {
+    try {
+      const r = await fetch("/api/live");
+      if (!r.ok) throw new Error("Feed returned " + r.status);
+      setData(await r.json()); setErr(null);
+    } catch(e) { setErr(e.message); }
+    setSecs(REFRESH_MS/1000);
+  }
+  useEffect(() => {
+    load();
+    timer.current = setInterval(load, REFRESH_MS);
+    const tick = setInterval(()=>setSecs(s=>s>0?s-1:0),1000);
+    return ()=>{clearInterval(timer.current);clearInterval(tick);};
+  }, []);
+
+  const MatchRow = ({m}) => (
+    <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${C.line}`}}>
+      <div style={{flex:1,textAlign:"right",font:`600 15px ${display}`}}>{m.home.name}</div>
+      <div style={{display:"flex",gap:6,alignItems:"center",minWidth:90,justifyContent:"center"}}>
+        <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.home.score??"–"}</span>
+        <span style={{color:C.mute}}>:</span>
+        <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score??"–"}</span>
+      </div>
+      <div style={{flex:1,font:`600 15px ${display}`}}>{m.away.name}</div>
+      <div style={{width:70,textAlign:"right",font:`600 11px ${mono}`,color:m.status==="LIVE"?C.red:C.mute}}>
+        {m.status==="LIVE" ? (m.minute? m.minute+"'":"LIVE") : m.status==="FINISHED" ? "FT" : new Date(m.utcKickoff).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:10}}>
+        <div>
+          <Eyebrow>Live Feed — 2026 FIFA World Cup</Eyebrow>
+          <h2 style={{font:`800 30px/1 ${display}`,margin:"10px 0 0"}}>Today's matches</h2>
+        </div>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,textAlign:"right"}}>
+          <div><span className="pulse"></span> &nbsp;AUTO-REFRESH</div>
+          <div style={{marginTop:6}}>next pull in {secs}s</div>
+        </div>
+      </div>
+
+      {err && <Panel style={{marginTop:20,borderColor:C.red}}>
+        <div style={{font:`600 13px ${mono}`,color:C.red}}>Feed unavailable</div>
+        <div style={{font:`13px/1.5 ${display}`,color:C.mute,marginTop:8}}>
+          {err}. Check that FOOTBALL_DATA_API_KEY is set in your Vercel project. The page will retry automatically.
+        </div>
+      </Panel>}
+
+      {!data && !err && <div style={{padding:40,textAlign:"center",color:C.mute,font:mono}}>Loading feed…</div>}
+
+      {data && <div style={{marginTop:22}}>
+        {data.live.length>0 && <Panel style={{marginBottom:16,borderColor:C.red}}>
+          <div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.red,marginBottom:6}}>● IN PLAY</div>
+          {data.live.map(m=><MatchRow key={m.id} m={m}/>)}
+        </Panel>}
+        <Panel style={{marginBottom:16}}>
+          <div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold,marginBottom:6}}>FINISHED TODAY</div>
+          {data.finishedToday.length? data.finishedToday.map(m=><MatchRow key={m.id} m={m}/>) : <Empty>No matches have finished yet today.</Empty>}
+        </Panel>
+        <Panel>
+          <div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6}}>UPCOMING TODAY</div>
+          {data.upcomingToday.length? data.upcomingToday.map(m=><MatchRow key={m.id} m={m}/>) : <Empty>Nothing else scheduled today.</Empty>}
+        </Panel>
+        <div style={{font:`11px ${mono}`,color:C.mute,textAlign:"center",marginTop:16}}>
+          Feed updated {new Date(data.updatedAt).toLocaleTimeString()} · served from cache
+        </div>
+      </div>}
+    </div>
+  );
+}
+const Empty = ({children}) => <div style={{font:`13px ${display}`,color:C.mute,padding:"10px 0"}}>{children}</div>;
+
+/* ---------- STANDINGS tab ---------- */
+function Standings(){
+  const [data,setData]=useState(null); const [err,setErr]=useState(null);
+  useEffect(()=>{ fetch("/api/standings").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
+  return (
+    <div>
+      <Eyebrow>Group Stage — Live Standings</Eyebrow>
+      <h2 style={{font:`800 30px/1 ${display}`,margin:"10px 0 22px"}}>Tables</h2>
+      {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,font:mono}}>Standings unavailable — {err}</span></Panel>}
+      {!data && !err && <div style={{padding:30,color:C.mute,font:mono}}>Loading…</div>}
+      {data && data.groups.map(g=>(
+        <Panel key={g.group} style={{marginBottom:14}}>
+          <div style={{font:`700 13px ${mono}`,color:C.gold,marginBottom:10}}>{g.group}</div>
+          <div style={{display:"grid",gridTemplateColumns:"24px 1fr repeat(5,32px) 40px",gap:6,font:`600 10px ${mono}`,color:C.mute,paddingBottom:8,borderBottom:`1px solid ${C.line}`}}>
+            <span>#</span><span>TEAM</span><span style={{textAlign:"center"}}>P</span><span style={{textAlign:"center"}}>W</span><span style={{textAlign:"center"}}>D</span><span style={{textAlign:"center"}}>L</span><span style={{textAlign:"center"}}>GD</span><span style={{textAlign:"center"}}>PTS</span>
+          </div>
+          {g.table.map(r=>(
+            <div key={r.position} style={{display:"grid",gridTemplateColumns:"24px 1fr repeat(5,32px) 40px",gap:6,font:`600 13px ${display}`,padding:"9px 0",borderBottom:`1px solid ${C.line}`,alignItems:"center"}}>
+              <span style={{color:r.position<=2?C.gold:C.mute,fontFamily:mono}}>{r.position}</span>
+              <span>{r.team}</span>
+              <span style={{textAlign:"center",color:C.mute}}>{r.played}</span>
+              <span style={{textAlign:"center"}}>{r.won}</span>
+              <span style={{textAlign:"center"}}>{r.draw}</span>
+              <span style={{textAlign:"center"}}>{r.lost}</span>
+              <span style={{textAlign:"center",color:C.mute}}>{r.gd>0?"+":""}{r.gd}</span>
+              <span style={{textAlign:"center",color:C.gold,fontFamily:mono}}>{r.points}</span>
+            </div>
+          ))}
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- HISTORY tab ---------- */
+function History(){
+  const [sel,setSel]=useState(2022);
+  const t=TOURNAMENTS.find(x=>x.year===sel);
+  return (
+    <div>
+      <Eyebrow>Archive — 1930 to 2022</Eyebrow>
+      <h2 style={{font:`800 30px/1 ${display}`,margin:"10px 0 22px"}}>Past editions</h2>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:22}}>
+        {TOURNAMENTS.map(x=>(
+          <button key={x.year} onClick={()=>setSel(x.year)} style={{font:`600 12px ${mono}`,padding:"7px 10px",cursor:"pointer",borderRadius:3,border:`1px solid ${sel===x.year?C.gold:C.line}`,background:sel===x.year?C.gold:"transparent",color:sel===x.year?C.pitch:C.mute}}>{x.year}</button>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Panel>
+          <div style={{font:`500 11px ${mono}`,color:C.gold}}>{t.host.toUpperCase()} {t.year}</div>
+          <div style={{font:`800 38px/1 ${display}`,margin:"8px 0 20px"}}>{t.winner}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
+            <Stat label="Runner-up" value={t.runnerUp}/>
+            <Stat label="Teams" value={t.teams} accent={C.grass}/>
+            <Stat label="Total goals" value={t.goals} accent={C.gold}/>
+            <Stat label="Goals / match" value={(t.goals/t.matches).toFixed(2)} accent={C.gold}/>
+          </div>
+        </Panel>
+        <Panel>
+          <div style={{font:`600 11px ${mono}`,color:C.mute,marginBottom:14}}>MOST TITLES — ALL TIME</div>
+          {Object.entries(TITLES).sort((a,b)=>b[1]-a[1]).map(([n,v],i)=>(
+            <div key={n} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:`1px solid ${C.line}`}}>
+              <span style={{font:`800 15px ${mono}`,color:i===0?C.gold:C.mute,width:22}}>{String(i+1).padStart(2,"0")}</span>
+              <span style={{flex:1,font:`600 15px ${display}`}}>{n}</span>
+              <span style={{font:`600 13px ${mono}`,color:C.mute}}>{v}{v===1?" title":" titles"}</span>
+            </div>
+          ))}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- shell ---------- */
+const NAV=[["Live",Live],["Standings",Standings],["History",History]];
+function App(){
+  const [tab,setTab]=useState(0);
+  const Active=NAV[tab][1];
+  return (
+    <div style={{minHeight:"100vh"}}>
+      <header style={{borderBottom:`1px solid ${C.line}`,padding:"22px 28px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:34,height:34,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`}}></div>
+          <div>
+            <div style={{font:`900 19px/1 ${display}`}}>WORLD CUP INTELLIGENCE HUB</div>
+            <div style={{font:`500 10px/1 ${mono}`,letterSpacing:".2em",color:C.mute,marginTop:5}}>LIVE FEED · 2026 · USA·CAN·MEX</div>
+          </div>
+        </div>
+        <div style={{font:`600 11px ${mono}`,color:C.red}}><span className="pulse"></span> &nbsp;LIVE</div>
+      </header>
+      <nav style={{display:"flex",gap:2,padding:"0 28px",borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
+        {NAV.map(([label],i)=>(
+          <button key={label} onClick={()=>setTab(i)} style={{font:`700 13px ${display}`,padding:"16px 18px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap"}}>{label}</button>
+        ))}
+      </nav>
+      <main style={{maxWidth:1000,margin:"0 auto",padding:"34px 28px 80px"}}><Active/></main>
+      <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.5 ${mono}`,color:C.mute,textAlign:"center"}}>
+        Live data via football-data.org, cached server-side. Historical data 1930–2022. Built on Vercel serverless.
+      </footer>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
