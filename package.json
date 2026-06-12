@@ -9,6 +9,7 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "@vercel/kv": "^2.0.0"
   }
 }
