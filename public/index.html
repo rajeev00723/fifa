@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>World Cup Intelligence Hub</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
 <style>
@@ -452,8 +454,57 @@ function PlayerPredictor(){
   </div>);
 }
 
+/* ===================== PATH TO FINAL (Monte Carlo) ===================== */
+function Simulator(){
+  const teams=Object.keys(M.RATINGS);
+  const [team,setTeam]=useState("Brazil");
+  const [rounds,setRounds]=useState(4);
+  const [res,setRes]=useState(null);
+  const [running,setRunning]=useState(false);
+  function run(){
+    setRunning(true);
+    // defer so the button can show "running" before the 10k-loop blocks
+    setTimeout(()=>{
+      const field=teams.slice().sort((a,b)=>M.rating(b)-M.rating(a)).slice(0,16);
+      const withTeam=field.includes(team)?field:[team,...field.slice(0,15)];
+      setRes(M.simulateBracket(team,withTeam,rounds,10000));
+      setRunning(false);
+    },30);
+  }
+  useEffect(()=>{ run(); },[team,rounds]); // eslint-disable-line
+  const roundsLabel={1:"Final only",2:"From semis",3:"From quarters",4:"From Round of 16"};
+  return (<div>
+    <H2 eyebrow="Prediction — Monte Carlo" title="Path to the final" right={<span className="est">10,000 SIMS</span>}/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 18px",maxWidth:600}}>Simulates a team's remaining knockout run ten thousand times. Each round the opponent is a random survivor weighted by strength — so the odds reflect a realistic, uncertain path, not one fixed bracket. A model estimate.</p>
+    <div style={{display:"flex",gap:16,marginBottom:18,flexWrap:"wrap"}}>
+      <Select label="Team" value={team} onChange={setTeam} options={teams}/>
+      <Select label="Starting from" value={String(rounds)} onChange={v=>setRounds(+v)} options={["4","3","2","1"]}/>
+    </div>
+    <Panel style={{marginBottom:16,textAlign:"center"}}>
+      <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em"}}>TITLE ODDS — {team.toUpperCase()}, {roundsLabel[rounds]}</div>
+      <div style={{font:`800 64px/1 ${display}`,color:C.gold,margin:"10px 0"}}>{running?"…":res?(res.titleOdds*100).toFixed(1)+"%":"—"}</div>
+      <button onClick={run} disabled={running} style={{font:`600 12px ${mono}`,padding:"8px 16px",cursor:"pointer",borderRadius:3,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold}}>Re-run simulation</button>
+    </Panel>
+    {res && <Panel>
+      <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>WHERE THE RUN ENDS — probability of exiting at each stage</div>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={[...res.exitByRound.map(e=>({stage:e.label,pct:+(e.pct*100).toFixed(1)})),{stage:"Champion",pct:+(res.titleOdds*100).toFixed(1)}]} margin={{left:-12,right:16,top:0,bottom:0}}>
+          <CartesianGrid stroke={C.line} vertical={false}/>
+          <XAxis dataKey="stage" tick={{fill:C.mute,fontSize:10,fontFamily:mono}} angle={-20} textAnchor="end" height={56}/>
+          <YAxis tick={{fill:C.mute,fontSize:10,fontFamily:mono}} unit="%"/>
+          <Tooltip {...tip} formatter={v=>[v+"%","Probability"]}/>
+          <Bar dataKey="pct" radius={[3,3,0,0]}>
+            {[...res.exitByRound,{}].map((e,i,arr)=><Recharts.Cell key={i} fill={i===arr.length-1?C.gold:C.goldDim}/>)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>Gold = lifts the trophy. Field = top 16 teams by rating; opponents sampled by strength each round.</div>
+    </Panel>}
+  </div>);
+}
+
 /* ===================== SHELL ===================== */
-const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor]];
+const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor]];
 function App(){
   const [tab,setTab]=useState(0); const Active=NAV[tab][1];
   const [matchId,setMatchId]=useState(null);

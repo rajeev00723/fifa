@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0a1f1a"/>
+  <circle cx="32" cy="32" r="19" fill="none" stroke="#e8b84b" stroke-width="3"/>
+  <!-- pentagon center -->
+  <path d="M32 21 l9 6.5 -3.4 10.6 -11.2 0 -3.4 -10.6 z" fill="#e8b84b"/>
+  <!-- seams -->
+  <path d="M32 13 v8 M50 27 l-9 6.5 M44 49 l-6.4-10.4 M20 49 l6.4-10.4 M14 27 l9 6.5"
+        stroke="#e8b84b" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+</svg>

@@ -61,7 +61,62 @@ window.WCModel = (function () {
     return { banked: currentGoals, projected: +projected.toFixed(1), total: +(currentGoals + projected).toFixed(1) };
   }
 
-  return { RATINGS, rating, winExpectancy, matchOutcome, expectedGoals, knockoutWin, titleOdds, bootProjection };
+  /**
+   * Monte Carlo bracket simulator.
+   * Instead of assuming a fixed opponent each round, we model the whole field:
+   * at each round the team faces a random survivor (sampled by strength), so
+   * the title odds reflect a realistic, uncertain path — not a single guess.
+   *
+   * @param target   team we're simulating for
+   * @param field    array of team names still alive (incl. target)
+   * @param rounds   how many knockout rounds remain to win the trophy
+   * @param runs     number of simulations (more = smoother, default 10000)
+   * @returns {titleOdds, exitByRound:[{round,label,pct}]}
+   */
+  function simulateBracket(target, field, rounds, runs = 10000) {
+    const others = field.filter((t) => t !== target);
+    if (others.length === 0) return { titleOdds: 1, exitByRound: [] };
+    const roundLabels = roundNames(rounds);
+    let titles = 0;
+    const exitedAt = new Array(rounds).fill(0); // index r = lost in round r
+    // weight for sampling opponents — stronger teams more likely to survive to meet you
+    const weight = (t) => Math.pow(10, rating(t) / 400);
+
+    for (let n = 0; n < runs; n++) {
+      let alive = true;
+      for (let r = 0; r < rounds && alive; r++) {
+        // sample an opponent for this round, weighted by strength
+        const opp = weightedPick(others, weight);
+        const pWin = winExpectancy(target, opp);
+        if (Math.random() < pWin) {
+          // survived this round
+          if (r === rounds - 1) titles++; // won the final
+        } else {
+          exitedAt[r]++;
+          alive = false;
+        }
+      }
+    }
+    return {
+      titleOdds: titles / runs,
+      exitByRound: exitedAt.map((c, r) => ({ round: r + 1, label: roundLabels[r], pct: c / runs })),
+    };
+  }
+
+  function roundNames(n) {
+    // last n rounds before & incl. the final
+    const all = ["Round of 16", "Quarter-final", "Semi-final", "Final"];
+    return all.slice(Math.max(0, all.length - n));
+  }
+  function weightedPick(arr, wfn) {
+    const ws = arr.map(wfn);
+    const sum = ws.reduce((a, b) => a + b, 0);
+    let x = Math.random() * sum;
+    for (let i = 0; i < arr.length; i++) { x -= ws[i]; if (x <= 0) return arr[i]; }
+    return arr[arr.length - 1];
+  }
+
+  return { RATINGS, rating, winExpectancy, matchOutcome, expectedGoals, knockoutWin, titleOdds, bootProjection, simulateBracket };
 })();
 
 /* Historical dataset (men's WC) for the history visuals. */
