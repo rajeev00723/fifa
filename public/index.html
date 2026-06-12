@@ -73,14 +73,71 @@ const Select = ({label,value,onChange,options}) => (
 );
 const tip = {contentStyle:{background:C.pitch,border:`1px solid ${C.line}`,fontFamily:mono,fontSize:12,color:C.chalk},cursor:{fill:"rgba(255,255,255,.03)"}};
 
+/* ===================== MATCH DETAIL MODAL ===================== */
+function MatchModal({id,onClose}){
+  const [d,setD]=useState(null); const [err,setErr]=useState(null);
+  useEffect(()=>{ if(!id)return; setD(null);setErr(null);
+    fetch("/api/match?id="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
+  },[id]);
+  if(!id) return null;
+  const icon=(t)=>t==="GOAL"?"⚽":t==="RED"?"🟥":t==="YELLOW"?"🟨":t==="SUB"?"⇄":"•";
+  const Side=({s})=>(
+    <div style={{flex:1}}>
+      <div style={{font:`700 13px ${display}`,marginBottom:2}}>{s.name}</div>
+      {s.lineup?.formation && <div style={{font:`600 10px ${mono}`,color:C.gold,marginBottom:8}}>{s.lineup.formation}</div>}
+      {(s.lineup?.starting||[]).map((p,i)=>(
+        <div key={i} style={{display:"flex",gap:8,padding:"4px 0",font:`500 12px ${display}`,color:C.chalk,borderBottom:`1px solid ${C.line}`}}>
+          <span style={{width:22,color:C.mute,fontFamily:mono,fontSize:11,textAlign:"right"}}>{p.shirt??""}</span>
+          <span style={{flex:1}}>{p.name}</span>
+          <span style={{color:C.mute,fontFamily:mono,fontSize:10}}>{p.position||""}</span>
+        </div>
+      ))}
+      {(!s.lineup?.starting||s.lineup.starting.length===0) && <Empty>Lineup not published yet.</Empty>}
+    </div>
+  );
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(4,12,9,.82)",zIndex:50,display:"grid",placeItems:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,maxWidth:680,width:"100%",maxHeight:"86vh",overflowY:"auto",padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <span style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold}}>MATCH DETAIL</span>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",font:mono}}>Close ✕</button>
+        </div>
+        {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>Detail unavailable — {err}. (Lineups & events appear once the provider publishes them, usually near kickoff.)</span></Panel>}
+        {!d && !err && <div style={{padding:30,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading match…</div>}
+        {d && <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{font:`700 16px ${display}`}}>{d.home.name}</span><Crest src={d.home.crest}/></div>
+            <span style={{font:`800 26px ${display}`,color:C.gold}}>{d.home.score??"–"} : {d.away.score??"–"}</span>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><Crest src={d.away.crest}/><span style={{font:`700 16px ${display}`}}>{d.away.name}</span></div>
+          </div>
+          {/* timeline */}
+          <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>TIMELINE</div>
+          {d.events.length? d.events.map((e,i)=>(
+            <div key={i} style={{display:"flex",gap:12,padding:"7px 0",borderBottom:`1px solid ${C.line}`,font:`500 13px ${display}`}}>
+              <span style={{width:34,fontFamily:mono,fontSize:12,color:C.gold}}>{e.minute!=null?e.minute+"'":""}</span>
+              <span style={{width:22}}>{icon(e.type)}</span>
+              <span style={{flex:1}}>{e.player}{e.type==="GOAL"&&e.assist?<span style={{color:C.mute}}> (assist {e.assist})</span>:null}{e.type==="SUB"&&e.playerOut?<span style={{color:C.mute}}> for {e.playerOut}</span>:null}</span>
+              <span style={{color:C.mute,fontFamily:mono,fontSize:11}}>{e.team}</span>
+            </div>
+          )):<Empty>No events recorded yet.</Empty>}
+          {/* lineups */}
+          <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",margin:"20px 0 10px"}}>LINEUPS</div>
+          <div style={{display:"flex",gap:20}}><Side s={d.home}/><Side s={d.away}/></div>
+          {d.stats?.possession==null && <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16,paddingTop:12,borderTop:`1px solid ${C.line}`}}>Possession & shot stats aren't in the free data tier — upgrade the provider to add them.</div>}
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 /* ===================== LIVE ===================== */
-function Live() {
+function Live({onOpenMatch}) {
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
   const [secs,setSecs]=useState(REFRESH_MS/1000); const timer=useRef(null);
   async function load(){ try{ const r=await fetch("/api/live"); if(!r.ok)throw new Error("Feed "+r.status); setData(await r.json()); setErr(null);}catch(e){setErr(e.message);} setSecs(REFRESH_MS/1000); }
   useEffect(()=>{ load(); timer.current=setInterval(load,REFRESH_MS); const t=setInterval(()=>setSecs(s=>s>0?s-1:0),1000); return()=>{clearInterval(timer.current);clearInterval(t);}; },[]);
   const Row=({m})=>(
-    <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${C.line}`}}>
+    <div onClick={()=>onOpenMatch&&onOpenMatch(m.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${C.line}`,cursor:"pointer"}} title="View match detail">
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:9,font:`600 15px ${display}`}}><span>{m.home.name}</span><Crest src={m.home.crest}/></div>
       <div style={{display:"flex",gap:6,alignItems:"center",minWidth:90,justifyContent:"center"}}>
         <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.home.score??"–"}</span><span style={{color:C.mute}}>:</span><span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score??"–"}</span>
@@ -129,6 +186,85 @@ function ScorerRace(){
 }
 
 /* ===================== QUALIFICATION ODDS (live standings + model) ===================== */
+/* ===================== SQUAD MODAL ===================== */
+function SquadModal({id,onClose}){
+  const [d,setD]=useState(null); const [err,setErr]=useState(null);
+  useEffect(()=>{ if(!id)return; setD(null);setErr(null);
+    fetch("/api/squad?id="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
+  },[id]);
+  if(!id) return null;
+  const age=(dob)=>{ if(!dob)return"—"; const d=new Date(dob); return Math.floor((Date.now()-d)/3.15576e10); };
+  const byPos={}; (d?.squad||[]).forEach(p=>{ const k=p.position||"Other"; (byPos[k]=byPos[k]||[]).push(p); });
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(4,12,9,.82)",zIndex:50,display:"grid",placeItems:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,maxWidth:640,width:"100%",maxHeight:"86vh",overflowY:"auto",padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <span style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold}}>SQUAD</span>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",fontFamily:mono}}>Close ✕</button>
+        </div>
+        {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>Squad unavailable — {err}.</span></Panel>}
+        {!d && !err && <div style={{padding:30,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading squad…</div>}
+        {d && <div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><Crest src={d.crest}/><span style={{font:`800 22px ${display}`}}>{d.team}</span></div>
+          {d.coach && <div style={{font:`12px ${mono}`,color:C.mute,marginBottom:14}}>Coach: {d.coach}</div>}
+          {Object.keys(byPos).length===0 && <Empty>Squad not published in the feed yet.</Empty>}
+          {Object.entries(byPos).map(([pos,players])=>(
+            <div key={pos} style={{marginBottom:14}}>
+              <div style={{font:`600 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:6}}>{pos.toUpperCase()}</div>
+              {players.map((p,i)=>(
+                <div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:`1px solid ${C.line}`,font:`500 13px ${display}`,alignItems:"center"}}>
+                  <span style={{width:24,fontFamily:mono,fontSize:11,color:C.mute,textAlign:"right"}}>{p.shirt??""}</span>
+                  <span style={{flex:1}}>{p.name}</span>
+                  <span style={{font:`11px ${mono}`,color:C.mute}}>{p.nationality}</span>
+                  <span style={{width:30,textAlign:"right",font:`11px ${mono}`,color:C.mute}}>{age(p.dob)}y</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+/* ===================== STANDINGS + FORM ===================== */
+function Standings({onOpenTeam}){
+  const [data,setData]=useState(null); const [err,setErr]=useState(null);
+  useEffect(()=>{ fetch("/api/standings").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
+  // Form proxy from available data: a W-D-L pip strip (the free feed doesn't
+  // expose per-match form sequences, so we show the aggregate record honestly).
+  const Pips=({w,d,l})=>(
+    <div style={{display:"flex",gap:3}}>
+      {Array.from({length:w}).map((_,i)=><span key={"w"+i} style={{width:12,height:12,borderRadius:2,background:C.grass}}/>)}
+      {Array.from({length:d}).map((_,i)=><span key={"d"+i} style={{width:12,height:12,borderRadius:2,background:C.mute}}/>)}
+      {Array.from({length:l}).map((_,i)=><span key={"l"+i} style={{width:12,height:12,borderRadius:2,background:C.red}}/>)}
+    </div>
+  );
+  return (<div>
+    <H2 eyebrow="Live — Group Stage" title="Standings & form"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>Tap any team to see its squad. The pip strip shows the win–draw–loss record (green–grey–red) — the form summary the free data tier supports.</p>
+    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
+    {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
+    {data && data.groups.map(g=>(
+      <Panel key={g.group} style={{marginBottom:14}}>
+        <div style={{font:`700 13px ${mono}`,color:C.gold,marginBottom:10}}>{g.group}</div>
+        <div style={{display:"grid",gridTemplateColumns:"22px 1fr 70px 30px 40px",gap:8,font:`600 10px ${mono}`,color:C.mute,paddingBottom:8,borderBottom:`1px solid ${C.line}`}}>
+          <span>#</span><span>TEAM</span><span>FORM</span><span style={{textAlign:"center"}}>GD</span><span style={{textAlign:"center"}}>PTS</span>
+        </div>
+        {g.table.map(r=>(
+          <div key={r.position} onClick={()=>r.teamId&&onOpenTeam&&onOpenTeam(r.teamId)} title={r.teamId?"View squad":""} style={{display:"grid",gridTemplateColumns:"22px 1fr 70px 30px 40px",gap:8,font:`600 13px ${display}`,padding:"9px 0",borderBottom:`1px solid ${C.line}`,alignItems:"center",cursor:r.teamId?"pointer":"default"}}>
+            <span style={{color:r.position<=2?C.gold:C.mute,fontFamily:mono}}>{r.position}</span>
+            <span style={{display:"flex",alignItems:"center",gap:8}}><Crest src={r.crest} size={18}/>{r.team}</span>
+            <Pips w={r.won} d={r.draw} l={r.lost}/>
+            <span style={{textAlign:"center",color:C.mute,fontFamily:mono}}>{r.gd>0?"+":""}{r.gd}</span>
+            <span style={{textAlign:"center",color:C.gold,fontFamily:mono}}>{r.points}</span>
+          </div>
+        ))}
+      </Panel>
+    ))}
+  </div>);
+}
+
 function QualOdds(){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
   useEffect(()=>{ fetch("/api/standings").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
@@ -317,10 +453,14 @@ function PlayerPredictor(){
 }
 
 /* ===================== SHELL ===================== */
-const NAV=[["Live",Live],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor]];
+const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor]];
 function App(){
   const [tab,setTab]=useState(0); const Active=NAV[tab][1];
+  const [matchId,setMatchId]=useState(null);
+  const [teamId,setTeamId]=useState(null);
   return (<div style={{minHeight:"100vh"}}>
+    <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
+    <SquadModal id={teamId} onClose={()=>setTeamId(null)}/>
     <header style={{borderBottom:`1px solid ${C.line}`,padding:"22px 28px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
         <div style={{width:34,height:34,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`}}></div>
@@ -331,11 +471,11 @@ function App(){
     <nav style={{display:"flex",gap:2,padding:"0 28px",borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
       {NAV.map(([label],i)=>(<button key={label} onClick={()=>setTab(i)} style={{font:`700 13px ${display}`,padding:"16px 16px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap"}}>{label}</button>))}
     </nav>
-    <main style={{maxWidth:1000,margin:"0 auto",padding:"34px 28px 80px"}}><Active/></main>
+    <main style={{maxWidth:1000,margin:"0 auto",padding:"34px 28px 80px"}}><Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/></main>
     <footer style={{borderTop:`1px solid ${C.line}`,padding:"22px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center"}}>
       <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
       <div style={{marginTop:8}}>Live data via football-data.org, cached server-side · Historical 1930–2022 · Predictions are transparent Elo-model estimates, not statements of fact.</div>
-      <div style={{marginTop:8}}>Made by Rajeev Sinha · rajeevbuilds.dev</div>
+      <div style={{marginTop:8}}>Made by Rajeev · rajeevbuilds.dev</div>
     </footer>
   </div>);
 }
