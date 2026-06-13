@@ -1122,6 +1122,85 @@ function NationEvolution(){
 }
 
 /* ===================== HERO HOMEPAGE ===================== */
+/* ===================== LIVE STATS WIDGET (homepage) ===================== */
+// Team colours for avatar backgrounds — keyed to common nationalities in the feed.
+const TEAM_COLOURS = {
+  "USA":"#B22234","United States":"#B22234","Brazil":"#009C3B","France":"#003189",
+  "Germany":"#000000","Argentina":"#74ACDF","Spain":"#AA151B","England":"#CF081F",
+  "Portugal":"#006600","Mexico":"#006847","Canada":"#FF0000","Morocco":"#C1272D",
+  "Japan":"#BC002D","South Korea":"#003478","Netherlands":"#FF6600","Croatia":"#FF0000",
+  "Senegal":"#00853F","Ecuador":"#FFD100","Switzerland":"#FF0000","Uruguay":"#5EAFE4",
+  "Australia":"#00843D","Poland":"#DC143C","Bosnia and Herzegovina":"#002395",
+  "Czechia":"#D7141A","Paraguay":"#D52B1E","Serbia":"#C6363C","Ghana":"#006B3F",
+  "Ivory Coast":"#F77F00","Belgium":"#000000","Colombia":"#FCD116","Peru":"#D91023",
+  "Saudi Arabia":"#006C35","Qatar":"#8D1B3D","Iran":"#239F40","Iraq":"#007A3D",
+  "Tunisia":"#E70013","Egypt":"#CE1126","Algeria":"#006233","Nigeria":"#008751",
+  "Cameroon":"#007A5E","Scotland":"#0065BF","Haiti":"#00209F","Sweden":"#006AA7",
+  "Norway":"#EF2B2D","Turkey":"#E30A17","New Zealand":"#00247D","Denmark":"#C60C30",
+};
+function initials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(" ");
+  return parts.length === 1 ? parts[0][0] : parts[0][0] + parts[parts.length-1][0];
+}
+function Avatar({name, team, size=38}) {
+  const bg = TEAM_COLOURS[team] || "#1d3b31";
+  const ini = initials(name);
+  return (
+    <div style={{width:size,height:size,borderRadius:"50%",background:bg,display:"grid",
+      placeItems:"center",flexShrink:0,border:`2px solid rgba(255,255,255,.12)`}}>
+      <span style={{font:`700 ${Math.round(size*0.38)}px/1 ${display}`,color:"#fff",letterSpacing:"-.01em"}}>{ini.toUpperCase()}</span>
+    </div>
+  );
+}
+function LiveStatsWidget({onNavigate}){
+  const [data,setData]=useState(null);
+  const [statTab,setStatTab]=useState("goals");
+  useEffect(()=>{
+    fetch("/api/scorers").then(r=>r.json()).then(j=>{ if(!j.error)setData(j); }).catch(()=>{});
+  },[]);
+  if(!data||!data.scorers||data.scorers.length===0) return null;
+  const tabs=[["goals","Goals"],["assists","Assists"],["penalties","Pens"]];
+  const sorted=[...data.scorers]
+    .filter(s=>s[statTab]!=null&&s[statTab]>0)
+    .sort((a,b)=>(b[statTab]||0)-(a[statTab]||0))
+    .slice(0,8);
+  if(sorted.length===0) return null;
+  const max=sorted[0][statTab]||1;
+  return (
+    <Panel style={{marginBottom:20,cursor:"default"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+        <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em"}}>⚽ LIVE TOURNAMENT STATS</div>
+        <div style={{display:"flex",gap:6}}>
+          {tabs.map(([k,l])=><button key={k} onClick={()=>setStatTab(k)} style={{font:`600 11px ${mono}`,padding:"5px 10px",cursor:"pointer",borderRadius:3,border:`1px solid ${statTab===k?C.gold:C.line}`,background:statTab===k?C.gold:"transparent",color:statTab===k?C.pitch:C.mute}}>{l}</button>)}
+        </div>
+      </div>
+      <div style={{display:"grid",gap:2}}>
+        {sorted.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:`1px solid ${C.line}`}}>
+            <span style={{font:`700 13px ${mono}`,color:i===0?C.gold:C.mute,width:20,textAlign:"right"}}>{i+1}</span>
+            <Avatar name={s.player} team={s.team}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{font:`600 14px ${display}`,color:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.player}</div>
+              <div style={{font:`11px ${mono}`,color:C.mute,marginTop:2}}>{s.team}</div>
+            </div>
+            {/* bar */}
+            <div style={{width:100,height:6,background:C.pitch2,borderRadius:3,overflow:"hidden"}}>
+              <div style={{width:((s[statTab]||0)/max*100)+"%",height:"100%",borderRadius:3,background:i===0?C.gold:C.goldDim}}/>
+            </div>
+            <span style={{font:`800 18px/1 ${display}`,color:i===0?C.gold:C.chalk,minWidth:24,textAlign:"right"}}>{s[statTab]||0}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,paddingTop:10,borderTop:`1px solid ${C.line}`}}>
+        <div style={{font:`11px ${mono}`,color:C.mute}}>Live from tournament feed</div>
+        <button onClick={()=>onNavigate("Scorer Race")} style={{font:`11px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:0}}>View full leaderboard →</button>
+      </div>
+    </Panel>
+  );
+}
+
+/* ===================== HOMEPAGE ===================== */
 function Homepage({onNavigate}){
   const D=window.WCData;
   const M=window.WCModel;
@@ -1201,6 +1280,9 @@ function Homepage({onNavigate}){
         <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>View all upsets →</div>
       </Panel>
     </div>
+
+    {/* LIVE PLAYER STATS WIDGET */}
+    <LiveStatsWidget onNavigate={onNavigate}/>
 
     {/* STORY TEASER */}
     <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer"}} onClick={()=>onNavigate("Stories")}>
