@@ -290,5 +290,120 @@ window.WCData = (function () {
     return { clutch, dynasty: t.dna.dynasty, giantKiller: t.dna.giantKiller, consistency: t.dna.consistency };
   }
 
-  return { TEAMS, COACHES, UPSETS, search, computeDNA };
+  /* ── INTELLIGENCE SCORE ─────────────────────────────────────────────── */
+  // Weighted composite: Historical(30%) + Consistency(20%) + WinRate(20%) +
+  //                     Goals(15%) + KnockoutSuccess(15%)
+  // Each dimension normalised to 0-100 against the field, then weighted.
+  function computeIntelligenceScore(teamKey) {
+    const t = TEAMS[teamKey]; if (!t) return null;
+    const all = Object.values(TEAMS);
+    const norm = (val, arr) => { const mn=Math.min(...arr),mx=Math.max(...arr); return mx===mn?50:Math.round((val-mn)/(mx-mn)*100); };
+    const historical  = norm(t.overall.titles*20 + t.overall.finals*5 + t.overall.semis*2, all.map(x=>x.overall.titles*20+x.overall.finals*5+x.overall.semis*2));
+    const consistency = t.dna.consistency;
+    const winRate     = norm(t.overall.won/t.overall.played, all.map(x=>x.overall.won/x.overall.played));
+    const goals       = norm(t.overall.gf/t.overall.played, all.map(x=>x.overall.gf/x.overall.played));
+    const knockout    = norm(t.knockoutRecord.won/t.knockoutRecord.played, all.map(x=>x.knockoutRecord.won/x.knockoutRecord.played));
+    const score = Math.round(historical*0.30 + consistency*0.20 + winRate*0.20 + goals*0.15 + knockout*0.15);
+    return { score, breakdown: { historical, consistency, winRate, goals, knockout } };
+  }
+
+  function allIntelligenceScores() {
+    return Object.keys(TEAMS).map(k => ({ team:k, flag:TEAMS[k].flag, ...computeIntelligenceScore(k) }))
+      .sort((a,b) => b.score - a.score);
+  }
+
+  /* ── COACH IMPACT SCORE ─────────────────────────────────────────────── */
+  function coachImpactScore(c) {
+    const winPct = c.won/c.matches*100;
+    const titleBonus = c.bestFinish.includes("Champion") ? 30 : c.bestFinish.includes("Final") ? 15 : c.bestFinish.includes("Semi") ? 8 : 0;
+    const longevity = Math.min(20, c.tournaments * 7);
+    const goals = Math.min(20, c.gf/c.matches * 8);
+    return Math.round(winPct*0.4 + titleBonus + longevity + goals);
+  }
+
+  const COACHES_RANKED = [...COACHES].map(c=>({...c, impactScore:coachImpactScore(c), winPct:+(c.won/c.matches*100).toFixed(1), gpm:+(c.gf/c.matches).toFixed(2)})).sort((a,b)=>b.impactScore-a.impactScore);
+
+  /* ── TODAY IN WORLD CUP HISTORY ─────────────────────────────────────── */
+  // Keyed by "MM-DD". Real historical events.
+  const ON_THIS_DAY = {
+    "06-13": [
+      { year:1986, event:"Diego Maradona scores both the 'Hand of God' and 'Goal of the Century' against England in the quarter-final. Two goals that define the tournament forever.", teams:["Argentina","England"] },
+      { year:2014, event:"Germany hammer Portugal 4-0 in their Group G opener. Müller scores a hat-trick. It signals Germany's intent on the way to their fourth title.", teams:["Germany","Portugal"] },
+    ],
+    "06-11": [
+      { year:2026, event:"The 2026 World Cup opens at Estadio Azteca. Mexico beat South Africa 2-0 in the first match of the expanded 48-team format.", teams:["Mexico","South Africa"] },
+      { year:1998, event:"Brazil open their campaign with a 2-1 win over Scotland. Cafu and César Sampaio score; Tom Boyd's own goal seals it.", teams:["Brazil","Scotland"] },
+    ],
+    "06-14": [
+      { year:1994, event:"The USA open the first American World Cup with a 1-1 draw against Switzerland in the Pontiac Silverdome.", teams:["USA","Switzerland"] },
+      { year:1998, event:"France beat South Africa 3-0 in Paris. Thierry Henry scores his first World Cup goal.", teams:["France","South Africa"] },
+    ],
+    "06-12": [
+      { year:2014, event:"Brazil 3-1 Croatia in the tournament opener. Neymar scores twice but the match is clouded by a controversial Oscar goal and refereeing decisions.", teams:["Brazil","Croatia"] },
+      { year:1998, event:"Morocco vs Norway opens Group A. Chippo's goal gives Morocco their first World Cup win.", teams:["Morocco","Norway"] },
+    ],
+    "06-17": [
+      { year:1970, event:"Brazil 4-1 Italy in the Mexico final. The greatest World Cup match. Pelé, Gérson, Jairzinho, and Carlos Alberto score. The Jules Rimet Trophy goes to Brazil permanently.", teams:["Brazil","Italy"] },
+    ],
+    "06-08": [
+      { year:1998, event:"The World Cup opens in Paris. Scotland vs Brazil — a tournament classic opener ends Brazil 2-1.", teams:["Brazil","Scotland"] },
+    ],
+  };
+
+  function todayEvents() {
+    const today = new Date();
+    const key = String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
+    return ON_THIS_DAY[key] || [];
+  }
+
+  /* ── STORY CARDS ────────────────────────────────────────────────────── */
+  const STORIES = {
+    greatestFinals: [
+      { year:1970, title:"Brazil 4–1 Italy", subtitle:"The Perfect Final", story:"Three days after demolishing Uruguay in the semi, Brazil produced the most technically brilliant 90 minutes in World Cup history. Every goal was a statement. Carlos Alberto's fourth — a full-speed team move finished with a thundering right-foot drive — is the definitive World Cup moment.", icon:"🏆" },
+      { year:1986, title:"Argentina 3–2 West Germany", subtitle:"Maradona's Tournament", story:"West Germany came back from 2-0 down to level at 2-2 with eight minutes left. Then Burruchaga, played through by Maradona, slotted the winner. A final of swings and drama, settled by the man who had carried Argentina through every round.", icon:"⭐" },
+      { year:1998, title:"France 3–0 Brazil", subtitle:"The Night of Zidane", story:"Ronaldo had a fit hours before the match — the team sheet submitted with his name, withdrawn, then resubmitted. He played and was invisible. Zidane headed in two corners. Petit's late third sealed it. France's greatest night.", icon:"🇫🇷" },
+      { year:2022, title:"Argentina 3–3 France (aet)", subtitle:"The Greatest Final Ever?", story:"Argentina led 2-0 with 10 minutes left. Mbappé scored twice in 90 seconds to level — the fastest brace in a World Cup final. Extra time, 3-3. Penalties. Dibu Martínez saved two. Messi lifted the only trophy that had eluded him.", icon:"🐐" },
+    ],
+    greatestGoals: [
+      { year:1986, title:"Maradona vs England", subtitle:"Goal of the Century", story:"Eleven touches, 60 metres, past five England players and the goalkeeper. Peter Reid couldn't get near him. Peter Shilton dived the wrong way. Maradona didn't break stride. Voted the greatest goal in World Cup history by FIFA voters in 2002.", icon:"⚽" },
+      { year:1970, title:"Carlos Alberto vs Italy", subtitle:"The Team Goal", story:"A move built from Brazil's own penalty area, touched by six players before reaching Carlos Alberto in full sprint. One touch, one finish. Everything Brazil represented in 1970 in a single goal.", icon:"⚽" },
+      { year:1998, title:"Bergkamp vs Argentina", subtitle:"Three Touches of Genius", story:"Ninety-fourth minute. Quarter-final. Frank de Boer's 60-yard pass. Bergkamp's first touch to control it, second to flick it past Ayala, third to volley into the far corner. Commentator Jack van Gelder lost his voice. The Netherlands lost on penalties.", icon:"⚽" },
+    ],
+  };
+
+  /* ── KNOWLEDGE GRAPH DATA ───────────────────────────────────────────── */
+  const KNOWLEDGE_GRAPH = {
+    Brazil: {
+      coaches: ["Mário Zagallo","Luiz Felipe Scolari","Tite"],
+      players: ["Pelé","Ronaldo","Ronaldinho","Rivaldo","Romário","Zico","Cafu"],
+      rivals: ["Argentina","Germany","Italy"],
+      titles: [1958,1962,1970,1994,2002],
+      moments: ["1970 — Pelé's only World Cup final","2002 — Ronaldo's redemption","2014 — The Mineirazo (1-7 vs Germany)"],
+    },
+    Germany: {
+      coaches: ["Helmut Schön","Franz Beckenbauer","Sepp Herberger","Joachim Löw"],
+      players: ["Gerd Müller","Franz Beckenbauer","Miroslav Klose","Lothar Matthäus","Sepp Maier"],
+      rivals: ["Netherlands","Italy","Argentina"],
+      titles: [1954,1974,1990,2014],
+      moments: ["1954 — Miracle of Bern vs Hungary","1974 — Home triumph","2014 — 7-1 vs Brazil"],
+    },
+    Argentina: {
+      coaches: ["César Luis Menotti","Carlos Bilardo","Lionel Scaloni"],
+      players: ["Diego Maradona","Lionel Messi","Mario Kempes","Gabriel Batistuta","Sergio Agüero"],
+      rivals: ["Brazil","England","France"],
+      titles: [1978,1986,2022],
+      moments: ["1986 — Maradona's tournament","2022 — Messi's redemption","1990 — Final but dark tactics"],
+    },
+    France: {
+      coaches: ["Aimé Jacquet","Raymond Domenech","Didier Deschamps"],
+      players: ["Zinedine Zidane","Kylian Mbappé","Michel Platini","Thierry Henry","Didier Deschamps"],
+      rivals: ["Brazil","Germany","Croatia"],
+      titles: [1998,2018],
+      moments: ["1998 — Zidane's double header","2006 — Zidane's headbutt","2022 — Epic final loss"],
+    },
+  };
+
+  return { TEAMS, COACHES, COACHES_RANKED, UPSETS, STORIES, KNOWLEDGE_GRAPH,
+           search, computeDNA, computeIntelligenceScore, allIntelligenceScores, todayEvents };
+
 })();

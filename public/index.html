@@ -826,29 +826,372 @@ function Upsets(){
   </div>;
 }
 
-const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Coaches",CoachAnalytics],["Upsets",Upsets],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
+/* ===================== INTELLIGENCE SCORES ===================== */
+function IntelligenceScores(){
+  const D=window.WCData;
+  const scores=D.allIntelligenceScores();
+  const [sel,setSel]=useState(null);
+  const weights=[["Historical Performance","30%",C.gold],["Consistency","20%",C.grass],["Win Rate","20%",C.chalk],["Goals Scored","15%","#a78bfa"],["Knockout Success","15%",C.red]];
+  return <div>
+    <H2 eyebrow="World Cup Intelligence" title="Team Intelligence Scores"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 8px",maxWidth:580}}>A weighted composite of five dimensions of World Cup excellence. Click a team for the breakdown.</p>
+    <Panel style={{marginBottom:16,padding:"12px 16px"}}>
+      <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>FORMULA</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {weights.map(([label,w,col])=><div key={label} style={{font:`12px ${mono}`,color:col,background:"rgba(255,255,255,.04)",padding:"5px 10px",borderRadius:20,border:`1px solid ${col}44`}}>{label} <b>{w}</b></div>)}
+      </div>
+    </Panel>
+    <div style={{display:"grid",gap:10,marginBottom:16}}>
+      {scores.map((s,i)=>(
+        <div key={s.team} onClick={()=>setSel(sel===s.team?null:s.team)} style={{background:sel===s.team?`rgba(232,184,75,.06)`:C.panel,border:`1px solid ${sel===s.team?C.gold:C.line}`,borderRadius:4,padding:"14px 16px",cursor:"pointer"}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{font:`800 20px ${mono}`,color:i<3?C.gold:C.mute,width:28}}>#{i+1}</div>
+            <div style={{font:`700 18px ${display}`,color:C.chalk,flex:1}}>{s.flag} {s.team}</div>
+            <div style={{font:`800 28px/1 ${display}`,color:i===0?C.gold:i<3?C.chalk:C.mute}}>{s.score}</div>
+          </div>
+          <div style={{height:6,background:C.pitch2,borderRadius:3,marginTop:10,overflow:"hidden"}}>
+            <div style={{width:s.score+"%",height:"100%",borderRadius:3,background:i===0?`linear-gradient(90deg,${C.gold},${C.grass})`:i<3?C.gold:C.goldDim}}/>
+          </div>
+          {sel===s.team && s.breakdown && <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginTop:14,paddingTop:12,borderTop:`1px solid ${C.line}`}}>
+            {[["Historical",s.breakdown.historical,C.gold],["Consistency",s.breakdown.consistency,C.grass],["Win Rate",s.breakdown.winRate,C.chalk],["Goals",s.breakdown.goals,"#a78bfa"],["Knockout",s.breakdown.knockout,C.red]].map(([l,v,col])=>(
+              <div key={l} style={{textAlign:"center"}}>
+                <div style={{font:`700 20px ${display}`,color:col}}>{v}</div>
+                <div style={{font:`10px ${mono}`,color:C.mute,marginTop:3}}>{l}</div>
+              </div>
+            ))}
+          </div>}
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ===================== COACH IMPACT RANKING ===================== */
+function CoachImpact(){
+  const D=window.WCData;
+  const [sel,setSel]=useState(null);
+  return <div>
+    <H2 eyebrow="Coach Analytics" title="Coach Impact Rankings"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:580}}>Impact Score = Win%×0.4 + Title bonus + Longevity + Goals. Click any coach for the full breakdown.</p>
+    <Panel style={{marginBottom:16}}>
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={D.COACHES_RANKED.map(c=>({name:c.name.split(" ").pop(),full:c.name,score:c.impactScore,flag:c.flag}))} margin={{left:-10,right:8,top:0,bottom:0}}>
+          <CartesianGrid stroke={C.line} vertical={false}/>
+          <XAxis dataKey="name" tick={{fill:C.mute,fontSize:10,fontFamily:mono}} angle={-30} textAnchor="end" height={60}/>
+          <YAxis tick={{fill:C.mute,fontSize:10,fontFamily:mono}}/>
+          <Tooltip {...tip} formatter={(v,n,p)=>[v,"Impact Score — "+p.payload.full]}/>
+          <Bar dataKey="score" radius={[3,3,0,0]}>
+            {D.COACHES_RANKED.map((_,i)=><Recharts.Cell key={i} fill={i===0?C.gold:i<3?C.goldDim:C.line}/>)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </Panel>
+    <div style={{display:"grid",gap:8}}>
+      {D.COACHES_RANKED.map((c,i)=>(
+        <div key={c.name} onClick={()=>setSel(sel===c.name?null:c.name)} style={{background:sel===c.name?`rgba(232,184,75,.06)`:C.panel,border:`1px solid ${sel===c.name?C.gold:C.line}`,borderRadius:4,padding:"12px 16px",cursor:"pointer"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span style={{font:`800 16px ${mono}`,color:i<3?C.gold:C.mute,width:24}}>#{i+1}</span>
+            <span style={{font:`700 15px ${display}`,color:C.chalk,flex:1}}>{c.flag} {c.name}</span>
+            <span style={{font:`600 12px ${mono}`,color:C.mute}}>{c.country}</span>
+            <span style={{font:`800 18px ${display}`,color:i===0?C.gold:C.chalk}}>{c.impactScore}</span>
+          </div>
+          {sel===c.name && <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.line}`}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:12}}>
+              <Stat label="Win %" value={c.winPct+"%"} accent={C.gold}/>
+              <Stat label="Matches" value={c.matches}/>
+              <Stat label="Goals/game" value={c.gpm} accent={C.grass}/>
+              <Stat label="Tournaments" value={c.tournaments}/>
+            </div>
+            <div style={{font:`700 13px ${display}`,color:C.gold,marginBottom:4}}>{c.bestFinish}</div>
+            <div style={{font:`12px/1.5 ${mono}`,color:C.mute}}>{c.style}</div>
+          </div>}
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ===================== STORY CARDS ===================== */
+function Stories(){
+  const D=window.WCData;
+  const [tab,setTab]=useState("finals");
+  const todayEvts=D.todayEvents();
+  const today=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long"});
+  const storyTabs=[["finals","Greatest Finals"],["goals","Greatest Goals"]];
+  const stories=tab==="finals"?D.STORIES.greatestFinals:D.STORIES.greatestGoals;
+  return <div>
+    <H2 eyebrow="World Cup Stories" title="The moments that defined the game"/>
+    {todayEvts.length>0 && <Panel style={{marginBottom:20,borderColor:C.gold,background:"rgba(232,184,75,.05)"}}>
+      <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".14em",marginBottom:10}}>📅 TODAY IN WORLD CUP HISTORY — {today.toUpperCase()}</div>
+      {todayEvts.map((e,i)=>(
+        <div key={i} style={{display:"flex",gap:14,padding:"10px 0",borderBottom:i<todayEvts.length-1?`1px solid ${C.line}`:"none"}}>
+          <div style={{font:`800 20px ${display}`,color:C.gold,minWidth:44}}>{e.year}</div>
+          <div>
+            <div style={{font:`13px/1.6 ${display}`,color:C.chalk}}>{e.event}</div>
+            <div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>{e.teams.join(" · ")}</div>
+          </div>
+        </div>
+      ))}
+    </Panel>}
+    <div style={{display:"flex",gap:8,marginBottom:18}}>
+      {storyTabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{font:`600 12px ${mono}`,padding:"8px 14px",cursor:"pointer",borderRadius:3,border:`1px solid ${tab===k?C.gold:C.line}`,background:tab===k?C.gold:"transparent",color:tab===k?C.pitch:C.mute}}>{l}</button>)}
+    </div>
+    <div style={{display:"grid",gap:16}}>
+      {stories.map((s,i)=>(
+        <Panel key={i} style={{borderLeft:`3px solid ${C.gold}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:8}}>
+            <div>
+              <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk}}>{s.icon} {s.title}</div>
+              <div style={{font:`12px ${mono}`,color:C.gold,marginTop:4}}>{s.year} · {s.subtitle}</div>
+            </div>
+          </div>
+          <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{s.story}</div>
+        </Panel>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ===================== KNOWLEDGE GRAPH ===================== */
+function KnowledgeGraph(){
+  const D=window.WCData;
+  const teams=Object.keys(D.KNOWLEDGE_GRAPH);
+  const [center,setCenter]=useState("Brazil");
+  const [activeNode,setActiveNode]=useState(null);
+  const g=D.KNOWLEDGE_GRAPH[center];
+  const nodeTypes=[
+    {label:"Coaches",items:g.coaches,color:C.grass,icon:"🎯"},
+    {label:"Players",items:g.players,color:C.gold,icon:"⭐"},
+    {label:"Rivals",items:g.rivals,color:C.red,icon:"⚔️"},
+    {label:"Defining Moments",items:g.moments,color:"#a78bfa",icon:"📖"},
+  ];
+  return <div>
+    <H2 eyebrow="Knowledge Graph" title="Explore World Cup relationships"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>Navigate the connections between nations, coaches, players, and moments. Click a node to explore.</p>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+      {teams.map(t=><button key={t} onClick={()=>{setCenter(t);setActiveNode(null);}} style={{font:`600 12px ${mono}`,padding:"8px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${center===t?C.gold:C.line}`,background:center===t?C.gold:"transparent",color:center===t?C.pitch:C.mute}}>{D.TEAMS[t]?.flag||""} {t}</button>)}
+    </div>
+    {/* Visual graph — SVG hub-and-spoke */}
+    <Panel style={{marginBottom:16,overflow:"hidden"}}>
+      <svg viewBox="0 0 700 380" style={{width:"100%",height:"auto"}}>
+        {/* center node */}
+        <circle cx="350" cy="190" r="46" fill={C.gold} opacity=".15" stroke={C.gold} strokeWidth="2"/>
+        <text x="350" y="185" textAnchor="middle" style={{fill:C.gold,fontSize:14,fontWeight:800,fontFamily:display}}>{D.TEAMS[center]?.flag}</text>
+        <text x="350" y="204" textAnchor="middle" style={{fill:C.chalk,fontSize:13,fontWeight:700,fontFamily:display}}>{center}</text>
+        {/* spoke groups */}
+        {nodeTypes.map((nt,gi)=>{
+          const angles=[[270,315,45,90],[270,315,45,90]]; // top, right, bottom, left quadrant
+          const baseAngle=gi*(360/nodeTypes.length)-30;
+          const spokeAngle=(baseAngle)*Math.PI/180;
+          const r=140;
+          const sx=350+Math.cos(spokeAngle)*r;
+          const sy=190+Math.sin(spokeAngle)*r;
+          return <g key={gi}>
+            <line x1="350" y1="190" x2={sx} y2={sy} stroke={nt.color} strokeWidth="1.5" strokeDasharray="4 3" opacity=".5"/>
+            <circle cx={sx} cy={sy} r="30" fill={nt.color} opacity=".12" stroke={nt.color} strokeWidth="1.5"/>
+            <text x={sx} y={sy-4} textAnchor="middle" style={{fill:nt.color,fontSize:11,fontWeight:700,fontFamily:mono}}>{nt.icon}</text>
+            <text x={sx} y={sy+10} textAnchor="middle" style={{fill:C.chalk,fontSize:9,fontFamily:mono}}>{nt.label}</text>
+          </g>;
+        })}
+      </svg>
+    </Panel>
+    {/* Expanded relationship panels */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+      {nodeTypes.map((nt,i)=>(
+        <Panel key={i} style={{borderTop:`2px solid ${nt.color}`}}>
+          <div style={{font:`700 11px ${mono}`,color:nt.color,letterSpacing:".1em",marginBottom:10}}>{nt.icon} {nt.label.toUpperCase()}</div>
+          {nt.items.map((item,j)=>(
+            <div key={j} onClick={()=>setActiveNode(activeNode===item?null:item)} style={{padding:"7px 0",borderBottom:`1px solid ${C.line}`,cursor:"pointer",font:`13px ${display}`,color:activeNode===item?nt.color:C.chalk}}>{item}</div>
+          ))}
+        </Panel>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ===================== NATION EVOLUTION ===================== */
+function NationEvolution(){
+  const D=window.WCData;
+  const teams=Object.keys(D.TEAMS);
+  const [sel,setSel]=useState("Brazil");
+  const t=D.TEAMS[sel];
+  const evoData=t.byDecade.map(d=>({
+    decade:d.decade,
+    winPct:d.played>0?+(d.won/d.played*100).toFixed(0):0,
+    gpm:d.played>0?+(d.gf/d.played).toFixed(1):0,
+    played:d.played
+  })).filter(d=>d.played>0);
+  return <div>
+    <H2 eyebrow="Nation Evolution" title="How nations changed across eras"/>
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
+      {teams.map(n=><button key={n} onClick={()=>setSel(n)} style={{font:`600 12px ${mono}`,padding:"7px 12px",cursor:"pointer",borderRadius:3,border:`1px solid ${sel===n?C.gold:C.line}`,background:sel===n?C.gold:"transparent",color:sel===n?C.pitch:C.mute}}>{D.TEAMS[n].flag} {n}</button>)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <Panel>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>WIN % TREND BY DECADE</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={evoData} margin={{left:-20,right:8,top:5,bottom:0}}>
+            <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.gold} stopOpacity={.4}/><stop offset="100%" stopColor={C.gold} stopOpacity={0}/></linearGradient></defs>
+            <CartesianGrid stroke={C.line} vertical={false}/>
+            <XAxis dataKey="decade" tick={{fill:C.mute,fontSize:9,fontFamily:mono}} angle={-20} textAnchor="end" height={48}/>
+            <YAxis tick={{fill:C.mute,fontSize:10,fontFamily:mono}} unit="%"/>
+            <Tooltip {...tip} formatter={v=>[v+"%","Win %"]}/>
+            <Area type="monotone" dataKey="winPct" stroke={C.gold} strokeWidth={2} fill="url(#wg)"/>
+          </AreaChart>
+        </ResponsiveContainer>
+      </Panel>
+      <Panel>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>GOALS PER MATCH TREND</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={evoData} margin={{left:-20,right:8,top:5,bottom:0}}>
+            <defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.grass} stopOpacity={.4}/><stop offset="100%" stopColor={C.grass} stopOpacity={0}/></linearGradient></defs>
+            <CartesianGrid stroke={C.line} vertical={false}/>
+            <XAxis dataKey="decade" tick={{fill:C.mute,fontSize:9,fontFamily:mono}} angle={-20} textAnchor="end" height={48}/>
+            <YAxis tick={{fill:C.mute,fontSize:10,fontFamily:mono}}/>
+            <Tooltip {...tip} formatter={v=>[v,"Goals/match"]}/>
+            <Area type="monotone" dataKey="gpm" stroke={C.grass} strokeWidth={2} fill="url(#gg)"/>
+          </AreaChart>
+        </ResponsiveContainer>
+      </Panel>
+    </div>
+    {/* Decade cards */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+      {t.byDecade.filter(d=>d.played>0).map((d,i)=>(
+        <Panel key={i} style={{padding:14}}>
+          <div style={{font:`700 13px ${mono}`,color:C.gold,marginBottom:8}}>{d.decade}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <Stat label="Played" value={d.played}/>
+            <Stat label="Win %" value={d.played>0?+(d.won/d.played*100).toFixed(0)+"%":"—"} accent={C.gold}/>
+            <Stat label="GF" value={d.gf}/>
+            <Stat label="GA" value={d.ga}/>
+          </div>
+        </Panel>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ===================== HERO HOMEPAGE ===================== */
+function Homepage({onNavigate}){
+  const D=window.WCData;
+  const M=window.WCModel;
+  const [q,setQ]=useState("");
+  const [results,setResults]=useState([]);
+  const todayEvts=D.todayEvents();
+  const today=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long"});
+  useEffect(()=>{ setResults(q.length>1?D.search(q,5):[]); },[q]);
+  const pills=["Can Brazil win 2026?","Messi vs Maradona","Biggest upsets ever","Best coaches","Germany finals record","2022 final story"];
+  const scores=D.allIntelligenceScores().slice(0,3);
+  const topCoach=D.COACHES_RANKED[0];
+  return <div>
+    {/* HERO */}
+    <div style={{textAlign:"center",padding:"40px 0 32px",borderBottom:`1px solid ${C.line}`,marginBottom:28}}>
+      <div style={{font:`500 11px ${mono}`,letterSpacing:".3em",color:C.gold,marginBottom:12}}>FIFA WORLD CUP 2026 · USA · CANADA · MEXICO</div>
+      <h1 style={{font:`900 42px/1.05 ${display}`,color:C.chalk,margin:"0 0 6px",letterSpacing:"-.02em"}}>World Cup<br/><span style={{color:C.gold}}>Intelligence</span> Hub</h1>
+      <p style={{font:`16px/1.5 ${display}`,color:C.mute,margin:"12px auto 28px",maxWidth:460}}>The deepest World Cup analytics platform. Ask anything about the greatest tournament on Earth.</p>
+      {/* SEARCH */}
+      <div style={{maxWidth:580,margin:"0 auto",position:"relative"}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&results[0])onNavigate("Search");}}
+          placeholder="Search teams, coaches, upsets, records…"
+          style={{width:"100%",font:`500 16px ${display}`,padding:"16px 20px 16px 52px",color:C.chalk,background:C.panel,border:`2px solid ${q?C.gold:C.line}`,borderRadius:8,outline:"none"}}/>
+        <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",font:"22px sans-serif"}}>⚽</span>
+        {results.length>0 && <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,zIndex:10,overflow:"hidden"}}>
+          {results.map((r,i)=><div key={i} onClick={()=>{setQ("");onNavigate("Search");}} style={{padding:"11px 16px",cursor:"pointer",borderBottom:`1px solid ${C.line}`,font:`14px ${display}`,color:C.chalk,display:"flex",gap:10,alignItems:"center"}}>
+            <span>{r.type==="team"?"🏆":r.type==="coach"?"🎯":r.type==="upset"?"⚡":"📊"}</span>
+            <span style={{flex:1}}>{r.label}</span><span style={{font:`10px ${mono}`,color:C.mute}}>{r.type}</span>
+          </div>)}
+        </div>}
+      </div>
+      {/* Suggestion pills */}
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
+        {pills.map(p=><button key={p} onClick={()=>setQ(p)} style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{p}</button>)}
+      </div>
+    </div>
+
+    {/* TODAY IN HISTORY */}
+    {todayEvts.length>0 && <Panel style={{marginBottom:20,borderColor:C.gold,background:"rgba(232,184,75,.04)"}}>
+      <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".14em",marginBottom:10}}>📅 TODAY IN WORLD CUP HISTORY — {today.toUpperCase()}</div>
+      {todayEvts.map((e,i)=>(
+        <div key={i} style={{display:"flex",gap:14,padding:"10px 0",borderBottom:i<todayEvts.length-1?`1px solid ${C.line}`:"none"}}>
+          <div style={{font:`800 24px/1 ${display}`,color:C.gold,minWidth:50}}>{e.year}</div>
+          <div><div style={{font:`14px/1.6 ${display}`,color:C.chalk}}>{e.event}</div><div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>{e.teams.join(" · ")}</div></div>
+        </div>
+      ))}
+    </Panel>}
+
+    {/* THREE COLUMN PANELS */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
+      {/* Intelligence Scores */}
+      <Panel style={{cursor:"pointer"}} onClick={()=>onNavigate("Scores")}>
+        <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:12}}>🏆 TOP TEAMS</div>
+        {scores.map((s,i)=><div key={s.team} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.line}`}}>
+          <span style={{font:`800 14px ${mono}`,color:i===0?C.gold:C.mute,width:18}}>#{i+1}</span>
+          <span style={{font:`600 14px ${display}`,flex:1,color:C.chalk}}>{s.flag} {s.team}</span>
+          <span style={{font:`700 16px ${display}`,color:C.gold}}>{s.score}</span>
+        </div>)}
+        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>View all scores →</div>
+      </Panel>
+      {/* Top Coach */}
+      <Panel style={{cursor:"pointer"}} onClick={()=>onNavigate("Coach Ranking")}>
+        <div style={{font:`700 11px ${mono}`,color:C.grass,letterSpacing:".1em",marginBottom:12}}>🎯 TOP COACH</div>
+        <div style={{font:`800 20px/1 ${display}`,color:C.chalk,marginBottom:4}}>{topCoach.flag} {topCoach.name}</div>
+        <div style={{font:`11px ${mono}`,color:C.gold,marginBottom:12}}>{topCoach.bestFinish}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Stat label="Win %" value={topCoach.winPct+"%"} accent={C.gold}/>
+          <Stat label="Impact" value={topCoach.impactScore} accent={C.grass}/>
+        </div>
+        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:14}}>View all coaches →</div>
+      </Panel>
+      {/* Greatest upset */}
+      <Panel style={{cursor:"pointer"}} onClick={()=>onNavigate("Upsets")}>
+        <div style={{font:`700 11px ${mono}`,color:C.red,letterSpacing:".1em",marginBottom:12}}>⚡ BIGGEST UPSET</div>
+        <div style={{font:`700 16px/1.2 ${display}`,color:C.chalk,marginBottom:6}}>{D.UPSETS[0].match}</div>
+        <div style={{font:`11px ${mono}`,color:C.red,marginBottom:12}}>{D.UPSETS[0].year} · Score: {D.UPSETS[0].upsetScore}/100</div>
+        <div style={{font:`12px/1.5 ${display}`,color:C.mute}}>{D.UPSETS[0].detail.slice(0,90)}…</div>
+        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>View all upsets →</div>
+      </Panel>
+    </div>
+
+    {/* STORY TEASER */}
+    <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer"}} onClick={()=>onNavigate("Stories")}>
+      <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:10}}>📖 STORY OF THE TOURNAMENT</div>
+      <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk,marginBottom:6}}>{D.STORIES.greatestFinals[3].icon} {D.STORIES.greatestFinals[3].title}</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>{D.STORIES.greatestFinals[3].year} · {D.STORIES.greatestFinals[3].subtitle}</div>
+      <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{D.STORIES.greatestFinals[3].story.slice(0,180)}…</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginTop:12}}>Read all stories →</div>
+    </Panel>
+  </div>;
+}
+
+const NAV=[["Home",null],["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
 function App(){
-  const [tab,setTab]=useState(0); const Active=NAV[tab][1];
+  const [tab,setTab]=useState(0); 
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
+  const Active=NAV[tab][1];
+  const navigate=(label)=>{ const i=NAV.findIndex(([l])=>l===label); if(i>=0)setTab(i); };
   return (<div style={{minHeight:"100vh"}}>
     <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
     <SquadModal id={teamId} onClose={()=>setTeamId(null)}/>
-    <header style={{borderBottom:`1px solid ${C.line}`,padding:"22px 28px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-      <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <div style={{width:34,height:34,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`}}></div>
-        <div><div style={{font:`900 19px/1 ${display}`}}>WORLD CUP INTELLIGENCE HUB</div><div style={{font:`500 10px/1 ${mono}`,letterSpacing:".2em",color:C.mute,marginTop:5}}>LIVE FEED · 2026 · USA·CAN·MEX</div></div>
+    <header style={{borderBottom:`1px solid ${C.line}`,padding:"16px 28px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:14,cursor:"pointer"}} onClick={()=>setTab(0)}>
+        <div style={{width:32,height:32,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`}}></div>
+        <div><div style={{font:`900 17px/1 ${display}`}}>WORLD CUP INTELLIGENCE HUB</div><div style={{font:`500 9px/1 ${mono}`,letterSpacing:".2em",color:C.mute,marginTop:4}}>LIVE · 2026 · USA·CAN·MEX</div></div>
       </div>
-      <div style={{font:`600 11px ${mono}`,color:C.red}}><span className="pulse"></span> &nbsp;LIVE</div>
+      <div style={{display:"flex",alignItems:"center",gap:16}}>
+        <div style={{font:`600 11px ${mono}`,color:C.red}}><span className="pulse"></span> &nbsp;LIVE</div>
+      </div>
     </header>
-    <nav style={{display:"flex",gap:2,padding:"0 28px",borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
-      {NAV.map(([label],i)=>(<button key={label} onClick={()=>setTab(i)} style={{font:`700 13px ${display}`,padding:"16px 16px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap"}}>{label}</button>))}
+    <nav style={{display:"flex",gap:0,padding:"0 20px",borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
+      {NAV.map(([label],i)=>(<button key={label} onClick={()=>setTab(i)} style={{font:`600 12px ${display}`,padding:"13px 14px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap",flexShrink:0}}>{label}</button>))}
     </nav>
-    <main style={{maxWidth:1000,margin:"0 auto",padding:"34px 28px 80px"}}><Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/></main>
-    <footer style={{borderTop:`1px solid ${C.line}`,padding:"22px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center"}}>
+    <main style={{maxWidth:1040,margin:"0 auto",padding:"28px 24px 80px"}}>
+      {tab===0 ? <Homepage onNavigate={navigate}/> : <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/>}
+    </main>
+    <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center"}}>
       <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
-      <div style={{marginTop:8}}>Live data via football-data.org, cached server-side · Historical 1930–2022 · Predictions are transparent Elo-model estimates, not statements of fact.</div>
-      <div style={{marginTop:8}}>Made by Rajeev · rajeevbuilds.dev</div>
+      <div style={{marginTop:6}}>Live data via football-data.org · Historical 1930–2022 · Predictions are Elo-model estimates, not statements of fact.</div>
+      <div style={{marginTop:6}}>Made by Rajeev · rajeevbuilds.dev</div>
     </footer>
   </div>);
 }
