@@ -1191,7 +1191,10 @@ function Results({onOpenMatch}){
   const [days,setDays]=useState(7);
   useEffect(()=>{
     setData(null); setErr(null);
-    fetch(`/api/results?days=${days}`).then(r=>r.json()).then(j=>{if(j.error)throw new Error(j.error);setData(j);}).catch(e=>setErr(e.message));
+    fetch(`/api/results?days=${days}`)
+      .then(r=>r.json())
+      .then(j=>{if(j.error)throw new Error(j.detail||j.error);setData(j);})
+      .catch(e=>setErr(e.message));
   },[days]);
 
   // Sort group keys newest first
@@ -1222,7 +1225,11 @@ function Results({onOpenMatch}){
     <div style={{font:`11px ${mono}`,color:C.mute,marginBottom:16}}>
       All times shown in your local timezone ({TZ_LABEL}). Click any match for the goal timeline and lineups.
     </div>
-    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Results unavailable — {err}</span></Panel>}
+    {err && <Panel style={{borderColor:C.red}}>
+      <div style={{font:`600 13px ${mono}`,color:C.red,marginBottom:6}}>Results unavailable</div>
+      <div style={{font:`12px/1.5 ${mono}`,color:C.mute}}>{err}</div>
+      <div style={{font:`12px/1.5 ${display}`,color:C.mute,marginTop:8}}>This usually means the provider returned an error. Check your <b style={{color:C.chalk}}>FOOTBALL_DATA_API_KEY</b> in Vercel Environment Variables, then redeploy. Open the Vercel function logs for the exact provider message.</div>
+    </Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono,textAlign:"center"}}>Loading results…</div>}
     {data && groupKeys.length===0 && <Empty>No finished matches in the last {days} days yet — check back once games have been played.</Empty>}
     {data && groupKeys.map(day=>(
