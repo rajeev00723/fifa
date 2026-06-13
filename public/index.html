@@ -103,50 +103,78 @@ function MatchModal({id,onClose}){
     fetch("/api/match?id="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
   },[id]);
   if(!id) return null;
+  const hasEvents=d?.events?.length>0;
+  const hasLineup=s=>s?.lineup?.starting?.length>0;
+  const hasAnyDetail=d&&(hasEvents||hasLineup(d?.home)||hasLineup(d?.away));
+  const isFinished=d?.status==="FINISHED";
   const icon=(t)=>t==="GOAL"?"⚽":t==="RED"?"🟥":t==="YELLOW"?"🟨":t==="SUB"?"⇄":"•";
   const Side=({s})=>(
     <div style={{flex:1}}>
-      <div style={{font:`700 13px ${display}`,marginBottom:2}}>{s.name}</div>
-      {s.lineup?.formation && <div style={{font:`600 10px ${mono}`,color:C.gold,marginBottom:8}}>{s.lineup.formation}</div>}
-      {(s.lineup?.starting||[]).map((p,i)=>(
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+        <Crest src={s.crest} size={18}/>
+        <span style={{font:`700 13px ${display}`}}>{s.name}</span>
+        {s.lineup?.formation&&<span style={{font:`600 10px ${mono}`,color:C.gold,marginLeft:4}}>{s.lineup.formation}</span>}
+      </div>
+      {hasLineup(s)?(s.lineup.starting||[]).map((p,i)=>(
         <div key={i} style={{display:"flex",gap:8,padding:"4px 0",font:`500 12px ${display}`,color:C.chalk,borderBottom:`1px solid ${C.line}`}}>
           <span style={{width:22,color:C.mute,fontFamily:mono,fontSize:11,textAlign:"right"}}>{p.shirt??""}</span>
           <span style={{flex:1}}>{p.name}</span>
           <span style={{color:C.mute,fontFamily:mono,fontSize:10}}>{p.position||""}</span>
         </div>
-      ))}
-      {(!s.lineup?.starting||s.lineup.starting.length===0) && <Empty>Lineup not published yet.</Empty>}
+      )):<div style={{font:`12px ${mono}`,color:C.mute,padding:"8px 0"}}>Not available on free tier</div>}
     </div>
   );
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(4,12,9,.82)",zIndex:50,display:"grid",placeItems:"center",padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,maxWidth:680,width:"100%",maxHeight:"86vh",overflowY:"auto",padding:24}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <span style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold}}>MATCH DETAIL</span>
-          <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",font:mono}}>Close ✕</button>
+          <div><span style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold}}>MATCH DETAIL</span>
+          {d&&<span style={{font:`11px ${mono}`,color:C.mute,marginLeft:12}}>{d.stage?.replace(/_/g," ")}</span>}</div>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",fontFamily:mono}}>Close ✕</button>
         </div>
-        {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>Detail unavailable — {err}. (Lineups & events appear once the provider publishes them, usually near kickoff.)</span></Panel>}
-        {!d && !err && <div style={{padding:30,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading match…</div>}
-        {d && <div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,marginBottom:20}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{font:`700 16px ${display}`}}>{d.home.name}</span><Crest src={d.home.crest}/></div>
-            <span style={{font:`800 26px ${display}`,color:C.gold}}>{d.home.score??"–"} : {d.away.score??"–"}</span>
-            <div style={{display:"flex",alignItems:"center",gap:8}}><Crest src={d.away.crest}/><span style={{font:`700 16px ${display}`}}>{d.away.name}</span></div>
-          </div>
-          {/* timeline */}
-          <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>TIMELINE</div>
-          {d.events.length? d.events.map((e,i)=>(
-            <div key={i} style={{display:"flex",gap:12,padding:"7px 0",borderBottom:`1px solid ${C.line}`,font:`500 13px ${display}`}}>
-              <span style={{width:34,fontFamily:mono,fontSize:12,color:C.gold}}>{e.minute!=null?e.minute+"'":""}</span>
-              <span style={{width:22}}>{icon(e.type)}</span>
-              <span style={{flex:1}}>{e.player}{e.type==="GOAL"&&e.assist?<span style={{color:C.mute}}> (assist {e.assist})</span>:null}{e.type==="SUB"&&e.playerOut?<span style={{color:C.mute}}> for {e.playerOut}</span>:null}</span>
-              <span style={{color:C.mute,fontFamily:mono,fontSize:11}}>{e.team}</span>
+        {err&&<Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>{err}</span></Panel>}
+        {!d&&!err&&<div style={{padding:30,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading…</div>}
+        {d&&<div>
+          <div style={{textAlign:"center",padding:"16px 0 20px",borderBottom:`1px solid ${C.line}`,marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:20,marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flex:1,justifyContent:"flex-end"}}>
+                <span style={{font:`700 18px ${display}`}}>{d.home.name}</span><Crest src={d.home.crest} size={28}/>
+              </div>
+              <span style={{font:`900 36px/1 ${display}`,color:C.gold,minWidth:80,textAlign:"center"}}>{d.home.score??"-"} : {d.away.score??"-"}</span>
+              <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
+                <Crest src={d.away.crest} size={28}/><span style={{font:`700 18px ${display}`}}>{d.away.name}</span>
+              </div>
             </div>
-          )):<Empty>No events recorded yet.</Empty>}
-          {/* lineups */}
-          <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",margin:"20px 0 10px"}}>LINEUPS</div>
-          <div style={{display:"flex",gap:20}}><Side s={d.home}/><Side s={d.away}/></div>
-          {d.stats?.possession==null && <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16,paddingTop:12,borderTop:`1px solid ${C.line}`}}>Possession & shot stats aren't in the free data tier — upgrade the provider to add them.</div>}
+            <div style={{font:`12px ${mono}`,color:d.status==="LIVE"?C.red:C.mute}}>
+              {d.status==="LIVE"?"● LIVE":d.status==="FINISHED"?"FULL TIME":"SCHEDULED"} · {localDateTime(d.utcKickoff)} ({TZ_LABEL})
+            </div>
+          </div>
+          {isFinished&&!hasAnyDetail&&<Panel style={{marginBottom:20,borderColor:C.goldDim,background:"rgba(232,184,75,.04)"}}>
+            <div style={{font:`700 12px ${mono}`,color:C.gold,marginBottom:8}}>📊 Score data only</div>
+            <div style={{font:`13px/1.6 ${display}`,color:C.mute}}>
+              Lineups, goal scorers, cards and substitutions are not included in the <b style={{color:C.chalk}}>football-data.org free tier</b>. The score above is real and accurate.
+            </div>
+            <div style={{marginTop:12,display:"flex",gap:10,flexWrap:"wrap"}}>
+              <a href="https://www.football-data.org/coverage" target="_blank" rel="noopener noreferrer"
+                style={{font:`11px ${mono}`,color:C.gold,border:`1px solid ${C.goldDim}`,padding:"5px 10px",borderRadius:3,textDecoration:"none"}}>Upgrade provider →</a>
+              <span style={{font:`11px ${mono}`,color:C.mute,padding:"5px 0"}}>or switch to API-Football free tier (includes lineups)</span>
+            </div>
+          </Panel>}
+          {hasEvents&&<>
+            <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>TIMELINE</div>
+            {d.events.map((e,i)=>(
+              <div key={i} style={{display:"flex",gap:12,padding:"7px 0",borderBottom:`1px solid ${C.line}`,font:`500 13px ${display}`}}>
+                <span style={{width:34,fontFamily:mono,fontSize:12,color:C.gold}}>{e.minute!=null?e.minute+"'":""}</span>
+                <span style={{width:22}}>{icon(e.type)}</span>
+                <span style={{flex:1}}>{e.player}{e.type==="GOAL"&&e.assist?<span style={{color:C.mute}}> (assist {e.assist})</span>:null}{e.type==="SUB"&&e.playerOut?<span style={{color:C.mute}}> ↔ {e.playerOut}</span>:null}</span>
+                <span style={{color:C.mute,fontFamily:mono,fontSize:11}}>{e.team}</span>
+              </div>
+            ))}
+          </>}
+          {(hasLineup(d.home)||hasLineup(d.away))&&<>
+            <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",margin:"20px 0 10px"}}>LINEUPS</div>
+            <div style={{display:"flex",gap:20}}><Side s={d.home}/><Side s={d.away}/></div>
+          </>}
         </div>}
       </div>
     </div>
