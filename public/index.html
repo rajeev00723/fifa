@@ -302,38 +302,106 @@ function SquadModal({id,onClose}){
 function Standings({onOpenTeam}){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
   useEffect(()=>{ fetch("/api/standings").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
-  // Form proxy from available data: a W-D-L pip strip (the free feed doesn't
-  // expose per-match form sequences, so we show the aggregate record honestly).
+
+  // Enhanced pip: lettered badge with colour + letter for accessibility
+  const Pip=({type})=>{
+    const cfg={W:{bg:C.grass,label:"W"},D:{bg:C.mute,label:"D"},L:{bg:C.red,label:"L"}};
+    const c=cfg[type]||cfg.D;
+    return <span title={type==="W"?"Win":type==="D"?"Draw":"Loss"} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:4,background:c.bg,font:`700 8px/1 ${mono}`,color:"rgba(255,255,255,.9)",flexShrink:0}}>{c.label}</span>;
+  };
   const Pips=({w,d,l})=>(
-    <div style={{display:"flex",gap:3}}>
-      {Array.from({length:w}).map((_,i)=><span key={"w"+i} style={{width:12,height:12,borderRadius:2,background:C.grass}}/>)}
-      {Array.from({length:d}).map((_,i)=><span key={"d"+i} style={{width:12,height:12,borderRadius:2,background:C.mute}}/>)}
-      {Array.from({length:l}).map((_,i)=><span key={"l"+i} style={{width:12,height:12,borderRadius:2,background:C.red}}/>)}
+    <div style={{display:"flex",gap:3,alignItems:"center"}}>
+      {Array.from({length:w}).map((_,i)=><Pip key={"w"+i} type="W"/>)}
+      {Array.from({length:d}).map((_,i)=><Pip key={"d"+i} type="D"/>)}
+      {Array.from({length:l}).map((_,i)=><Pip key={"l"+i} type="L"/>)}
     </div>
   );
-  return (<div>
-    <H2 eyebrow="Live — Group Stage" title="Standings & form"/>
-    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>Tap any team to see its squad. The pip strip shows the win–draw–loss record (green–grey–red) — the form summary the free data tier supports.</p>
-    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
-    {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
-    {data && data.groups.map(g=>(
-      <Panel key={g.group} style={{marginBottom:14}}>
-        <div style={{font:`700 13px ${mono}`,color:C.gold,marginBottom:10}}>{g.group}</div>
-        <div style={{display:"grid",gridTemplateColumns:"22px 1fr 70px 30px 40px",gap:8,font:`600 10px ${mono}`,color:C.mute,paddingBottom:8,borderBottom:`1px solid ${C.line}`}}>
-          <span>#</span><span>TEAM</span><span>FORM</span><span style={{textAlign:"center"}}>GD</span><span style={{textAlign:"center"}}>PTS</span>
-        </div>
-        {g.table.map(r=>(
-          <div key={r.position} onClick={()=>r.teamId&&onOpenTeam&&onOpenTeam(r.teamId)} title={r.teamId?"View squad":""} style={{display:"grid",gridTemplateColumns:"22px 1fr 70px 30px 40px",gap:8,font:`600 13px ${display}`,padding:"9px 0",borderBottom:`1px solid ${C.line}`,alignItems:"center",cursor:r.teamId?"pointer":"default"}}>
-            <span style={{color:r.position<=2?C.gold:C.mute,fontFamily:mono}}>{r.position}</span>
-            <span style={{display:"flex",alignItems:"center",gap:8}}><Crest src={r.crest} size={18}/>{r.team}</span>
+
+  // Derive progress stats from all groups
+  const progress=data?(() => {
+    let totalPlayed=0, totalMatches=0;
+    data.groups.forEach(g=>{ g.table.forEach(r=>{ totalPlayed+=r.played; }); totalMatches+=g.table.length*(g.table.length-1)/2*2; });
+    const matchesPlayed=totalPlayed/2;
+    const groupSize=data.groups[0]?.table?.length||4;
+    const gamesPerGroup=groupSize*(groupSize-1)/2;
+    const totalGroupGames=data.groups.length*gamesPerGroup;
+    return {matchesPlayed, totalGroupGames};
+  })():null;
+
+  const GroupTable=({g})=>(
+    <div style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:4,overflow:"hidden"}}>
+      {/* group header */}
+      <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.line}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(232,184,75,.04)"}}>
+        <div style={{font:`700 10px ${mono}`,color:C.gold,letterSpacing:".3em",borderLeft:`2px solid ${C.gold}`,paddingLeft:8}}>{g.group?.replace("GROUP ","GRP ")}</div>
+        <div style={{font:`10px ${mono}`,color:C.mute}}>P&nbsp;W&nbsp;D&nbsp;L</div>
+      </div>
+      {/* col headers */}
+      <div style={{display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,padding:"5px 14px",font:`500 9px ${mono}`,letterSpacing:".1em",color:C.mute,textTransform:"uppercase"}}>
+        <span/><span>Team</span><span>Form</span><span style={{textAlign:"center"}}>GD</span><span style={{textAlign:"center"}}>Pts</span>
+      </div>
+      {/* rows */}
+      {g.table.map((r,ri)=>{
+        const advancing=r.position<=2;
+        return (
+          <div key={r.position}
+            onClick={()=>r.teamId&&onOpenTeam&&onOpenTeam(r.teamId)}
+            title={r.teamId?"View squad":""}
+            style={{
+              display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,
+              padding:"9px 14px",alignItems:"center",cursor:r.teamId?"pointer":"default",
+              borderTop:`1px solid ${C.line}`,
+              borderLeft:`3px solid ${advancing?C.grass:"transparent"}`,
+              transition:"background 120ms",
+              background:"transparent",
+            }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.03)"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+          >
+            <span style={{font:`700 11px ${mono}`,color:advancing?C.grass:C.mute}}>{r.position}</span>
+            <span style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+              <Crest src={r.crest} size={16}/>
+              <span style={{font:`600 12px ${display}`,color:advancing?C.chalk:C.mute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.team}</span>
+            </span>
             <Pips w={r.won} d={r.draw} l={r.lost}/>
-            <span style={{textAlign:"center",color:C.mute,fontFamily:mono}}>{r.gd>0?"+":""}{r.gd}</span>
-            <span style={{textAlign:"center",color:C.gold,fontFamily:mono}}>{r.points}</span>
+            <span style={{textAlign:"center",font:`600 11px ${mono}`,color:r.gd>0?C.grass:r.gd<0?C.red:C.mute}}>{r.gd>0?"+":""}{r.gd}</span>
+            <span style={{textAlign:"center",font:`800 14px ${display}`,color:advancing?C.gold:C.chalk}}>{r.points}</span>
           </div>
-        ))}
-      </Panel>
-    ))}
-  </div>);
+        );
+      })}
+    </div>
+  );
+
+  return <div>
+    <H2 eyebrow="Live — Group Stage" title="Standings & form"/>
+
+    {/* Progress bar */}
+    {progress && <div style={{marginBottom:20,padding:"12px 16px",background:C.panel,border:`1px solid ${C.line}`,borderRadius:4}}>
+      <div style={{display:"flex",justifyContent:"space-between",font:`600 11px ${mono}`,color:C.mute,marginBottom:8}}>
+        <span>GROUP STAGE PROGRESS</span>
+        <span style={{color:C.chalk}}>{progress.matchesPlayed} <span style={{color:C.mute}}>/ {progress.totalGroupGames} matches played</span></span>
+      </div>
+      <div style={{height:4,background:C.pitch2,borderRadius:2,overflow:"hidden"}}>
+        <div style={{width:(progress.matchesPlayed/progress.totalGroupGames*100)+"%",height:"100%",borderRadius:2,background:`linear-gradient(90deg,${C.gold},${C.grass})`,transition:"width 600ms ease"}}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",font:`10px ${mono}`,color:C.mute,marginTop:6}}>
+        <span style={{color:C.grass}}>▌ Advancing (top 2 per group)</span>
+        <span>{Math.round(progress.matchesPlayed/progress.totalGroupGames*100)}% complete</span>
+      </div>
+    </div>}
+
+    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
+    {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono,textAlign:"center"}}>Loading standings…</div>}
+
+    {/* 3-column grid on desktop, 1 on mobile */}
+    {data && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+      {data.groups.map(g=><GroupTable key={g.group} g={g}/>)}
+    </div>}
+
+    <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16,display:"flex",gap:16,flexWrap:"wrap"}}>
+      <span><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:C.grass,marginRight:5}}/>Advancing to Round of 32</span>
+      <span>Tap any team row to view squad</span>
+    </div>
+  </div>;
 }
 
 function QualOdds(){
@@ -1378,30 +1446,86 @@ function Results({onOpenMatch}){
 }
 
 const NAV=[["Home",null],["Live",Live],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
+
+// Grouped nav: section → [tab labels]. Order matches NAV array labels exactly.
+const NAV_GROUPS=[
+  {label:"LIVE",  icon:"●", tabs:["Live","Results","Standings","Scorer Race"]},
+  {label:"INTEL", icon:"◈", tabs:["Search","Teams","Scores","Coaches","Coach Ranking","Upsets","Stories","Knowledge Graph","Nation Evolution"]},
+  {label:"PREDICT",icon:"◎",tabs:["Qual Odds","Path to Final","Team Predictor","Golden Boot"]},
+  {label:"MORE",  icon:"⊞", tabs:["History","Alerts"]},
+];
+
 function App(){
-  const [tab,setTab]=useState(0); 
+  const [tab,setTab]=useState(0);
+  const [section,setSection]=useState(0); // active nav group
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
   const navigate=(label)=>{
     const i=NAV.findIndex(([l])=>l===label);
-    if(i>=0){ setTab(i); window.scrollTo({top:0,behavior:"smooth"}); }
+    if(i>=0){
+      setTab(i);
+      // sync section highlight
+      const si=NAV_GROUPS.findIndex(g=>g.tabs.includes(label));
+      if(si>=0) setSection(si);
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
   };
   const Active=tab===0?null:NAV[tab]?.[1]||null;
+  const activeLabel=NAV[tab]?.[0]||"Home";
+
+  // Which tabs to show in the sub-nav row (section's tabs)
+  const subTabs=section>=0?NAV_GROUPS[section].tabs:[];
+
   return (<div style={{minHeight:"100vh"}}>
     <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
     <SquadModal id={teamId} onClose={()=>setTeamId(null)}/>
-    <header style={{borderBottom:`1px solid ${C.line}`,padding:"16px 28px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-      <div style={{display:"flex",alignItems:"center",gap:14,cursor:"pointer"}} onClick={()=>setTab(0)}>
-        <div style={{width:32,height:32,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`}}></div>
-        <div><div style={{font:`900 17px/1 ${display}`}}>WORLD CUP INTELLIGENCE HUB</div><div style={{font:`500 9px/1 ${mono}`,letterSpacing:".2em",color:C.mute,marginTop:4}}>LIVE · 2026 · USA·CAN·MEX</div></div>
+
+    {/* HEADER */}
+    <header style={{borderBottom:`1px solid ${C.line}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,background:C.pitch}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setTab(0)}>
+        <div style={{width:30,height:30,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`,flexShrink:0}}></div>
+        <div>
+          <div style={{font:`900 16px/1 ${display}`,letterSpacing:"-.01em"}}>WORLD CUP INTELLIGENCE HUB</div>
+          <div style={{font:`500 9px/1 ${mono}`,letterSpacing:".18em",color:C.mute,marginTop:4}}>LIVE · 2026 · USA · CANADA · MEXICO</div>
+        </div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:16}}>
-        <div style={{font:`600 11px ${mono}`,color:C.red}}><span className="pulse"></span> &nbsp;LIVE</div>
-      </div>
+      <div style={{font:`600 11px ${mono}`,color:C.red,display:"flex",alignItems:"center",gap:6}}><span className="pulse"></span>LIVE</div>
     </header>
-    <nav style={{display:"flex",gap:0,padding:"0 20px",borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
-      {NAV.map(([label],i)=>(<button key={label} onClick={()=>setTab(i)} style={{font:`600 12px ${display}`,padding:"13px 14px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap",flexShrink:0}}>{label}</button>))}
-    </nav>
+
+    {/* NAV — two rows: section tabs + sub-tabs */}
+    <div style={{background:C.pitch,borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:20}}>
+      {/* Row 1: section groups */}
+      <div style={{display:"flex",padding:"0 16px",gap:2,borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
+        <button onClick={()=>{setTab(0);setSection(-1);window.scrollTo({top:0,behavior:"smooth"});}}
+          style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",color:tab===0?C.gold:C.mute,borderBottom:`2px solid ${tab===0?C.gold:"transparent"}`,whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em"}}>
+          HOME
+        </button>
+        {NAV_GROUPS.map((g,gi)=>{
+          const isActive=section===gi&&tab!==0;
+          const hasActive=g.tabs.includes(activeLabel);
+          return <button key={g.label} onClick={()=>setSection(gi===section?gi:gi)}
+            style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
+              color:hasActive?C.gold:C.mute,borderBottom:`2px solid ${hasActive?C.gold:"transparent"}`,
+              whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em",display:"flex",alignItems:"center",gap:5}}>
+            <span style={{fontSize:8}}>{g.icon}</span>{g.label}
+          </button>;
+        })}
+      </div>
+      {/* Row 2: sub-tabs for active section */}
+      {tab!==0&&subTabs.length>0&&<div style={{display:"flex",padding:"0 16px",overflowX:"auto",gap:0}}>
+        {subTabs.map(label=>{
+          const i=NAV.findIndex(([l])=>l===label);
+          const active=tab===i;
+          return <button key={label} onClick={()=>{setTab(i);window.scrollTo({top:0,behavior:"smooth"});}}
+            style={{font:`500 12px ${display}`,padding:"9px 14px",cursor:"pointer",background:"none",border:"none",
+              color:active?C.chalk:C.mute,borderBottom:`2px solid ${active?C.gold:"transparent"}`,
+              whiteSpace:"nowrap",flexShrink:0}}>
+            {label}
+          </button>;
+        })}
+      </div>}
+    </div>
+
     <main style={{maxWidth:1040,margin:"0 auto",padding:"28px 24px 80px"}}>
       {tab===0 ? <Homepage onNavigate={navigate}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
     </main>
