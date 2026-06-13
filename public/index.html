@@ -668,7 +668,6 @@ function Simulator(){
         </select>
       </div>
     </div>
-    </div>
     <Panel style={{marginBottom:16,textAlign:"center"}}>
       <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em"}}>TITLE ODDS — {team.toUpperCase()}, {roundsLabel[rounds]} <Info text="The probability this team lifts the trophy, based on 10,000 simulated knockout brackets. Not a prediction — a model estimate based on team strength ratings."/></div>
       <div style={{font:`800 64px/1 ${display}`,color:C.gold,margin:"10px 0"}}>{running?"…":res?(res.titleOdds*100).toFixed(1)+"%":"—"}</div>
