@@ -52,7 +52,7 @@ const Panel = ({children,style}) => <div style={{background:C.panel,border:`1px 
 const Stat = ({label,value,accent}) => (
   <div style={{borderLeft:`2px solid ${accent||C.line}`,paddingLeft:12}}>
     <div style={{font:`700 24px/1 ${display}`,color:C.chalk}}>{value}</div>
-    <div style={{font:`500 10px/1.3 ${mono}`,letterSpacing:".12em",textTransform:"uppercase",color:C.mute,marginTop:6}}>{label}</div>
+    <div style={{font:`500 10px/1.3 ${mono}`,letterSpacing:".12em",textTransform:"uppercase",color:C.mute,marginTop:6,display:"flex",alignItems:"center",gap:4}}>{label}</div>
   </div>
 );
 const H2 = ({eyebrow,title,right}) => (
@@ -75,6 +75,48 @@ const Select = ({label,value,onChange,options}) => (
   </label>
 );
 const tip = {contentStyle:{background:C.pitch,border:`1px solid ${C.line}`,fontFamily:mono,fontSize:12,color:C.chalk},cursor:{fill:"rgba(255,255,255,.03)"}};
+
+/**
+ * Tooltip — shows an explanation bubble on hover/tap.
+ * Works on both desktop (hover) and mobile (tap to toggle).
+ * Usage: <Info text="Explanation here" />
+ *        <Info label="Elo model" text="Explanation" />
+ */
+function Info({text, label}){
+  const [open,setOpen]=useState(false);
+  return (
+    <span style={{position:"relative",display:"inline-flex",alignItems:"center",gap:4,verticalAlign:"middle"}}>
+      {label&&<span style={{font:`inherit`}}>{label}</span>}
+      <button
+        onClick={e=>{e.stopPropagation();setOpen(o=>!o);}}
+        onMouseEnter={()=>setOpen(true)}
+        onMouseLeave={()=>setOpen(false)}
+        aria-label="More information"
+        style={{background:"none",border:"none",cursor:"pointer",padding:"0 2px",display:"inline-flex",alignItems:"center",lineHeight:1}}>
+        <span style={{
+          display:"inline-flex",alignItems:"center",justifyContent:"center",
+          width:14,height:14,borderRadius:"50%",
+          border:`1px solid ${C.mute}`,
+          font:`600 9px/1 ${mono}`,color:C.mute,flexShrink:0,
+          transition:"border-color 120ms, color 120ms",
+        }}>i</span>
+      </button>
+      {open&&<div role="tooltip" style={{
+        position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",
+        background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:5,
+        padding:"8px 12px",width:220,zIndex:100,
+        font:`12px/1.5 ${display}`,color:C.chalk,
+        boxShadow:"0 4px 16px rgba(0,0,0,.5)",pointerEvents:"none",
+      }}>
+        {text}
+        {/* little arrow */}
+        <span style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",
+          width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent",
+          borderTop:`6px solid ${C.line}`}}/>
+      </div>}
+    </span>
+  );
+}
 
 // Shared time/date helpers — always render in the VISITOR'S local timezone.
 // Passing no timeZone option to Intl/toLocaleTimeString uses the browser's
@@ -337,7 +379,7 @@ function Standings({onOpenTeam}){
       </div>
       {/* col headers */}
       <div style={{display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,padding:"5px 14px",font:`500 9px ${mono}`,letterSpacing:".1em",color:C.mute,textTransform:"uppercase"}}>
-        <span/><span>Team</span><span>Form</span><span style={{textAlign:"center"}}>GD</span><span style={{textAlign:"center"}}>Pts</span>
+        <span/><span>Team</span><span>Form</span><span style={{textAlign:"center"}}><Info text="Goal Difference: goals scored minus goals conceded. Used to separate teams level on points." label="GD"/></span><span style={{textAlign:"center"}}>Pts</span>
       </div>
       {/* rows */}
       {g.table.map((r,ri)=>{
@@ -418,7 +460,7 @@ function QualOdds(){
     return scored.map((t,i)=>({team:t.team, p: Math.min(0.99, (exps[i]/sum)*2 )})).sort((a,b)=>b.p-a.p);
   }
   return (<div>
-    <H2 eyebrow="Live — Qualification Model" title="Who advances?" right={<span className="est">MODEL ESTIMATE</span>}/>
+    <H2 eyebrow="Live — Qualification Model" title="Who advances?" right={<span className="est" style={{display:"inline-flex",alignItems:"center",gap:5}}>MODEL ESTIMATE <Info text="These percentages are calculated by a mathematical model — not official predictions. They blend real current points with each team's pre-tournament strength rating. Treat them as informed estimates, not facts."/></span>}/>
     <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 18px",maxWidth:560}}>Probability of finishing top-2 and reaching the knockouts. Blends current points (real) with team strength and games remaining. An estimate, not a guarantee.</p>
     {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
@@ -534,10 +576,12 @@ function TeamPredictor(){
       <Bar3/>
       <div style={{display:"flex",justifyContent:"center",gap:30,marginTop:22,alignItems:"center"}}>
         <div style={{textAlign:"center"}}><div style={{font:`800 40px/1 ${display}`,color:C.gold}}>{Math.round(ga)}</div><div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>{a}</div></div>
-        <div style={{font:`600 16px ${mono}`,color:C.mute}}>xScore</div>
+        <div style={{font:`600 16px ${mono}`,color:C.mute}}>xScore <Info text="Expected score: the most likely final scoreline based on each team's attacking strength and the Elo rating gap between them. Not a guaranteed prediction."/></div>
         <div style={{textAlign:"center"}}><div style={{font:`800 40px/1 ${display}`,color:C.grass}}>{Math.round(gb)}</div><div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>{b}</div></div>
       </div>
-      <div style={{font:`12px ${mono}`,color:C.mute,textAlign:"center",marginTop:18,paddingTop:14,borderTop:`1px solid ${C.line}`}}>Ratings — {a}: {M.rating(a)} · {b}: {M.rating(b)}</div>
+      <div style={{font:`12px ${mono}`,color:C.mute,textAlign:"center",marginTop:18,paddingTop:14,borderTop:`1px solid ${C.line}`}}>
+        <Info text="Elo is a rating system where stronger teams have higher numbers. A 100-point gap means the stronger team wins ~64% of the time. Originally invented for chess, now used widely in football analytics." label="Elo ratings"/> — {a}: {M.rating(a)} · {b}: {M.rating(b)}
+      </div>
     </Panel>
     <Panel>
       <div style={{font:`600 11px ${mono}`,color:C.mute,marginBottom:12}}>TITLE ODDS — TOP CONTENDERS (illustrative knockout road)</div>
@@ -611,14 +655,22 @@ function Simulator(){
   useEffect(()=>{ run(); },[team,rounds]); // eslint-disable-line
   const roundsLabel={1:"Final only",2:"From semis",3:"From quarters",4:"From Round of 16"};
   return (<div>
-    <H2 eyebrow="Prediction — Monte Carlo" title="Path to the final" right={<span className="est">10,000 SIMS</span>}/>
-    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 18px",maxWidth:600}}>Simulates a team's remaining knockout run ten thousand times. Each round the opponent is a random survivor weighted by strength — so the odds reflect a realistic, uncertain path, not one fixed bracket. A model estimate.</p>
+    <H2 eyebrow="Prediction — Monte Carlo" title={<>Path to the final <Info text="Simulates a team's full knockout run thousands of times, accounting for realistic draw of opponents each round. The % is how often they win the whole thing across all simulations."/></>} right={<span className="est">10,000 SIMS</span>}/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 18px",maxWidth:600}}>Simulates a team's remaining knockout run ten thousand times. Each round the opponent is a random survivor weighted by strength — so the odds reflect a realistic, uncertain path, not one fixed bracket. <Info text="A Monte Carlo simulation runs thousands of random 'versions' of the tournament. Each run picks a random opponent for each round based on team strength. The final % shows how often your team wins across all those runs." label="How does this work?"/></p>
     <div style={{display:"flex",gap:16,marginBottom:18,flexWrap:"wrap"}}>
       <Select label="Team" value={team} onChange={setTeam} options={teams}/>
-      <Select label="Starting from" value={String(rounds)} onChange={v=>setRounds(+v)} options={["4","3","2","1"]}/>
+      <div style={{flex:1,minWidth:140}}>
+        <div style={{font:`600 10px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6,textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}>
+          Starting from <Info text={`Choose which stage of the knockout rounds to simulate from:\n4 = Round of 16 (last 32 teams)\n3 = Quarter-finals (last 8)\n2 = Semi-finals (last 4)\n1 = Final only`}/>
+        </div>
+        <select value={String(rounds)} onChange={e=>setRounds(+e.target.value)} style={{width:"100%",font:`600 14px ${display}`,padding:"10px 12px",color:C.chalk,background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:3}}>
+          {[["4","Round of 16 → Final"],["3","Quarter-final → Final"],["2","Semi-final → Final"],["1","Final only"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
+    </div>
     </div>
     <Panel style={{marginBottom:16,textAlign:"center"}}>
-      <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em"}}>TITLE ODDS — {team.toUpperCase()}, {roundsLabel[rounds]}</div>
+      <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em"}}>TITLE ODDS — {team.toUpperCase()}, {roundsLabel[rounds]} <Info text="The probability this team lifts the trophy, based on 10,000 simulated knockout brackets. Not a prediction — a model estimate based on team strength ratings."/></div>
       <div style={{font:`800 64px/1 ${display}`,color:C.gold,margin:"10px 0"}}>{running?"…":res?(res.titleOdds*100).toFixed(1)+"%":"—"}</div>
       <button onClick={run} disabled={running} style={{font:`600 12px ${mono}`,padding:"8px 16px",cursor:"pointer",borderRadius:3,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold}}>Re-run simulation</button>
     </Panel>
@@ -812,7 +864,7 @@ function TeamIntelligence(){
         </div>
       </Panel>
       <Panel>
-        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>WORLD CUP DNA</div>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>WORLD CUP DNA <Info text="Four custom metrics that capture different dimensions of World Cup greatness:&#10;• Clutch: how much better a team performs in knockouts vs group stage&#10;• Dynasty: sustained dominance across multiple decades&#10;• Giant Killer: record of beating stronger opponents&#10;• Consistency: low variance across tournaments — no big collapses"/></div>
         <ResponsiveContainer width="100%" height={240}>
           <RadarChart data={dnaData} outerRadius="72%">
             <PolarGrid stroke={C.line}/>
@@ -953,7 +1005,7 @@ function Upsets(){
         {sel?.match===u.match && <div>
           <div style={{height:1,background:C.line,margin:"12px 0"}}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:12}}>
-            <Stat label="Elo gap (rating pts)" value={u.eloDiff} accent={C.red}/>
+            <Stat label={<>Elo gap <Info text="The Elo rating difference between the two teams before the match. A larger gap means the underdog was considered much weaker. A gap of 300+ points means the winner had roughly a 15% chance of winning."/></>} value={u.eloDiff} accent={C.red}/>
             <Stat label="Upset score /100" value={u.upsetScore} accent={C.red}/>
           </div>
           <div style={{font:`13px/1.7 ${display}`,color:C.mute,borderLeft:`2px solid ${C.red}`,paddingLeft:12}}>{u.detail}</div>
@@ -970,7 +1022,7 @@ function IntelligenceScores(){
   const [sel,setSel]=useState(null);
   const weights=[["Historical Performance","30%",C.gold],["Consistency","20%",C.grass],["Win Rate","20%",C.chalk],["Goals Scored","15%","#a78bfa"],["Knockout Success","15%",C.red]];
   return <div>
-    <H2 eyebrow="World Cup Intelligence" title="Team Intelligence Scores"/>
+    <H2 eyebrow="World Cup Intelligence" title={<>Team Intelligence Scores <Info text="A composite score (0–100) ranking nations by their all-time World Cup excellence across five dimensions: historical success, consistency across tournaments, win rate, goals scored, and knockout performance."/></>}/>
     <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 8px",maxWidth:580}}>A weighted composite of five dimensions of World Cup excellence. Click a team for the breakdown.</p>
     <Panel style={{marginBottom:16,padding:"12px 16px"}}>
       <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>FORMULA</div>
