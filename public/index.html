@@ -33,6 +33,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
 <script src="/model.js"></script>
+<script src="/data.js"></script>
 <script type="text/babel" data-presets="env,react">
 const { useState, useEffect, useRef } = React;
 const { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -553,7 +554,279 @@ function Alerts(){
 }
 
 /* ===================== SHELL ===================== */
-const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
+/* ===================== UNIVERSAL SEARCH ===================== */
+function Search(){
+  const [q,setQ]=useState("");
+  const [results,setResults]=useState([]);
+  const [sel,setSel]=useState(null);
+  const D=window.WCData;
+  useEffect(()=>{ setResults(q.length>1?D.search(q,8):[]); setSel(null); },[q]);
+  const icons={team:"🏆",coach:"🎯",upset:"⚡",record:"📊"};
+  const TeamPreview=({k})=>{
+    const t=D.TEAMS[k]; if(!t) return null;
+    return <div>
+      <div style={{font:`800 28px/1 ${display}`,color:C.chalk,marginBottom:4}}>{t.flag} {t.name}</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:16}}>{t.overall.titles} TITLES · {t.overall.apps} APPEARANCES · {t.confederation}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+        <Stat label="Titles" value={t.overall.titles} accent={C.gold}/>
+        <Stat label="Win %" value={(t.overall.won/t.overall.played*100).toFixed(0)+"%"} accent={C.grass}/>
+        <Stat label="Goals for" value={t.overall.gf}/>
+        <Stat label="Finals" value={t.overall.finals}/>
+      </div>
+      <div style={{font:`13px/1.6 ${display}`,color:C.mute,borderLeft:`2px solid ${C.gold}`,paddingLeft:12}}>{t.summary}</div>
+    </div>;
+  };
+  const CoachPreview=({k})=>{
+    const c=D.COACHES.find(x=>x.name===k); if(!c) return null;
+    return <div>
+      <div style={{font:`800 24px/1 ${display}`,color:C.chalk,marginBottom:4}}>{c.flag} {c.name}</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:16}}>{c.country} · {c.period}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+        <Stat label="Matches" value={c.matches}/>
+        <Stat label="Win %" value={(c.won/c.matches*100).toFixed(0)+"%"} accent={C.grass}/>
+        <Stat label="Best finish" value={c.bestFinish}/>
+        <Stat label="Tournaments" value={c.tournaments}/>
+      </div>
+      <div style={{font:`13px/1.6 ${display}`,color:C.mute,borderLeft:`2px solid ${C.gold}`,paddingLeft:12}}>{c.style}</div>
+    </div>;
+  };
+  const UpsetPreview=({k})=>{
+    const u=D.UPSETS.find(x=>x.match===k); if(!u) return null;
+    return <div>
+      <div style={{font:`800 22px/1.1 ${display}`,color:C.chalk,marginBottom:4}}>{u.match}</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:16}}>{u.year} · {u.stage}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+        <Stat label="Elo difference" value={u.eloDiff+" pts"} accent={C.red}/>
+        <Stat label="Upset score" value={u.upsetScore+"/100"} accent={C.red}/>
+      </div>
+      <div style={{font:`13px/1.6 ${display}`,color:C.mute,borderLeft:`2px solid ${C.red}`,paddingLeft:12}}>{u.detail}</div>
+    </div>;
+  };
+  const Preview=({item})=>{
+    if(!item) return null;
+    return <Panel style={{marginTop:16}}>
+      {item.type==="team" && <TeamPreview k={item.key}/>}
+      {item.type==="coach" && <CoachPreview k={item.key}/>}
+      {item.type==="upset" && <UpsetPreview k={item.key}/>}
+      {item.type==="record" && <div><div style={{font:`800 22px/1.1 ${display}`,color:C.chalk,marginBottom:8}}>{item.label}</div><div style={{font:`15px/1.5 ${display}`,color:C.mute}}>{item.sublabel}</div></div>}
+    </Panel>;
+  };
+  return <div>
+    <H2 eyebrow="Universal Search" title="Search World Cup data"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>Search teams, coaches, upsets, and records. Try "Brazil titles", "upset 2022", "most goals", or any coach name.</p>
+    <div style={{position:"relative",marginBottom:8}}>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder='Try "Brazil", "Klose", "biggest upset", "most finals"...'
+        style={{width:"100%",font:`500 16px ${display}`,padding:"14px 16px 14px 44px",color:C.chalk,background:C.panel,border:`1px solid ${q?C.gold:C.line}`,borderRadius:6,outline:"none"}}/>
+      <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",font:"18px sans-serif"}}>🔍</span>
+    </div>
+    {results.length>0 && <div style={{background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:6,overflow:"hidden",marginBottom:4}}>
+      {results.map((r,i)=>(
+        <div key={i} onClick={()=>setSel(r)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",cursor:"pointer",background:sel?.key===r.key?"rgba(232,184,75,.08)":"transparent",borderBottom:`1px solid ${C.line}`}}>
+          <span>{icons[r.type]||"•"}</span>
+          <div style={{flex:1}}><div style={{font:`600 14px ${display}`,color:C.chalk}}>{r.label}</div><div style={{font:`11px ${mono}`,color:C.mute,marginTop:2}}>{r.sublabel}</div></div>
+          <span style={{font:`10px ${mono}`,color:C.mute,background:C.line,padding:"2px 6px",borderRadius:3}}>{r.type}</span>
+        </div>
+      ))}
+    </div>}
+    {sel && <Preview item={sel}/>}
+    {!sel && !q && <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:16}}>
+      {["Brazil","Germany upsets","Didier Deschamps","most goals","Saudi Arabia 2022","Spain 2010"].map(s=>(
+        <button key={s} onClick={()=>setQ(s)} style={{font:`12px ${mono}`,padding:"7px 12px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{s}</button>
+      ))}
+    </div>}
+  </div>;
+}
+
+/* ===================== TEAM INTELLIGENCE ===================== */
+function TeamIntelligence(){
+  const D=window.WCData;
+  const teams=Object.keys(D.TEAMS);
+  const [sel,setSel]=useState("Brazil");
+  const t=D.TEAMS[sel];
+  const dna=D.computeDNA(sel);
+  const winPct=v=>+(v.won/v.played*100).toFixed(1);
+  const decadeData=t.byDecade.map(d=>({name:d.decade,W:d.won,D:d.drawn,L:d.lost}));
+  const dnaData=Object.entries(dna).map(([k,v])=>({k:k.charAt(0).toUpperCase()+k.slice(1),v}));
+  return <div>
+    <H2 eyebrow="Team Intelligence" title="Deep team dossiers"/>
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
+      {teams.map(n=><button key={n} onClick={()=>setSel(n)} style={{font:`600 12px ${mono}`,padding:"7px 12px",cursor:"pointer",borderRadius:3,border:`1px solid ${sel===n?C.gold:C.line}`,background:sel===n?C.gold:"transparent",color:sel===n?C.pitch:C.mute}}>{D.TEAMS[n].flag} {n}</button>)}
+    </div>
+    {/* Header */}
+    <Panel style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+        <div><div style={{font:`800 34px/1 ${display}`,color:C.chalk}}>{t.flag} {t.name}</div><div style={{font:`12px ${mono}`,color:C.gold,marginTop:4}}>{t.confederation} · Founded {t.founded}</div></div>
+        <div style={{font:`11px ${mono}`,color:C.mute,textAlign:"right"}}>Titles: {t.titles.join(", ")||"—"}</div>
+      </div>
+      <div style={{font:`13px/1.7 ${display}`,color:C.mute,marginTop:14,borderLeft:`2px solid ${C.gold}`,paddingLeft:12}}>{t.summary}</div>
+    </Panel>
+    {/* Stats grid */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <Panel>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:16}}>OVERALL RECORD</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <Stat label="Titles" value={t.overall.titles} accent={C.gold}/>
+          <Stat label="Finals" value={t.overall.finals} accent={C.gold}/>
+          <Stat label="Appearances" value={t.overall.apps} accent={C.grass}/>
+          <Stat label="Win %" value={winPct(t.overall)+"%"} accent={C.grass}/>
+          <Stat label="Goals for" value={t.overall.gf}/>
+          <Stat label="Goals against" value={t.overall.ga}/>
+          <Stat label="Goal diff" value={(t.overall.gf-t.overall.ga>0?"+":"")+(t.overall.gf-t.overall.ga)}/>
+          <Stat label="Semi-finals" value={t.overall.semis}/>
+        </div>
+      </Panel>
+      <Panel>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>WORLD CUP DNA</div>
+        <ResponsiveContainer width="100%" height={240}>
+          <RadarChart data={dnaData} outerRadius="72%">
+            <PolarGrid stroke={C.line}/>
+            <PolarAngleAxis dataKey="k" tick={{fill:C.mute,fontSize:11,fontFamily:mono}}/>
+            <PolarRadiusAxis domain={[0,100]} tick={false} axisLine={false}/>
+            <Radar dataKey="v" stroke={C.gold} fill={C.gold} fillOpacity={.28} strokeWidth={2}/>
+          </RadarChart>
+        </ResponsiveContainer>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+          {dnaData.map(d=><div key={d.k} style={{display:"flex",justifyContent:"space-between",font:`12px ${mono}`,color:C.mute,padding:"4px 0",borderBottom:`1px solid ${C.line}`}}><span>{d.k}</span><span style={{color:d.v>80?C.gold:d.v>60?C.chalk:C.mute}}>{d.v}</span></div>)}
+        </div>
+      </Panel>
+    </div>
+    {/* Decade chart */}
+    <Panel style={{marginBottom:16}}>
+      <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>PERFORMANCE BY DECADE</div>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={decadeData} margin={{left:-12,right:8,top:0,bottom:0}}>
+          <CartesianGrid stroke={C.line} vertical={false}/>
+          <XAxis dataKey="name" tick={{fill:C.mute,fontSize:10,fontFamily:mono}} angle={-20} textAnchor="end" height={50}/>
+          <YAxis tick={{fill:C.mute,fontSize:10,fontFamily:mono}}/>
+          <Tooltip {...tip}/>
+          <Legend wrapperStyle={{fontFamily:mono,fontSize:11}}/>
+          <Bar dataKey="W" name="Won" stackId="a" fill={C.grass} radius={[0,0,0,0]}/>
+          <Bar dataKey="D" name="Drawn" stackId="a" fill={C.mute} radius={[0,0,0,0]}/>
+          <Bar dataKey="L" name="Lost" stackId="a" fill={C.red} radius={[3,3,0,0]}/>
+        </BarChart>
+      </ResponsiveContainer>
+    </Panel>
+    {/* Knockout record + best players */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <Panel>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:14}}>KNOCKOUT RECORD</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <Stat label="KO matches" value={t.knockoutRecord.played}/>
+          <Stat label="KO win %" value={(t.knockoutRecord.won/t.knockoutRecord.played*100).toFixed(0)+"%"} accent={C.gold}/>
+          <Stat label="KO won" value={t.knockoutRecord.won}/>
+          <Stat label="KO lost" value={t.knockoutRecord.lost}/>
+        </div>
+      </Panel>
+      <Panel>
+        <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>LEGENDARY PLAYERS</div>
+        {t.bestPlayers.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${C.line}`}}>
+          <span style={{font:`800 13px ${mono}`,color:i<3?C.gold:C.mute,width:18}}>{i+1}</span>
+          <span style={{font:`600 14px ${display}`,color:C.chalk}}>{p}</span>
+        </div>)}
+      </Panel>
+    </div>
+  </div>;
+}
+
+/* ===================== COACH ANALYTICS ===================== */
+function CoachAnalytics(){
+  const D=window.WCData;
+  const [sort,setSort]=useState("winPct");
+  const [sel,setSel]=useState(null);
+  const withStats=D.COACHES.map(c=>({...c,winPct:+(c.won/c.matches*100).toFixed(1),gpm:+(c.gf/c.matches).toFixed(2),gcpm:+(c.ga/c.matches).toFixed(2)}));
+  const sorted=[...withStats].sort((a,b)=>b[sort]-a[sort]);
+  const sortBtns=[["winPct","Win %"],["matches","Matches"],["won","Wins"],["gpm","Goals/game"],["tournaments","Tournaments"]];
+  return <div>
+    <H2 eyebrow="Coach Analytics" title="The managers"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>One of the most underanalysed dimensions of World Cup history. Click any coach for their full profile.</p>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+      {sortBtns.map(([k,l])=><button key={k} onClick={()=>setSort(k)} style={{font:`600 11px ${mono}`,padding:"6px 12px",cursor:"pointer",borderRadius:3,border:`1px solid ${sort===k?C.gold:C.line}`,background:sort===k?C.gold:"transparent",color:sort===k?C.pitch:C.mute}}>{l}</button>)}
+    </div>
+    {/* Ranked bar chart */}
+    <Panel style={{marginBottom:16}}>
+      <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>RANKED BY {sort.toUpperCase()}</div>
+      <ResponsiveContainer width="100%" height={Math.max(260,sorted.length*34)}>
+        <BarChart data={sorted.map(c=>({name:c.name,v:c[sort]}))} layout="vertical" margin={{left:20,right:40,top:0,bottom:0}}>
+          <CartesianGrid stroke={C.line} horizontal={false}/>
+          <XAxis type="number" tick={{fill:C.mute,fontSize:10,fontFamily:mono}}/>
+          <YAxis type="category" dataKey="name" width={145} tick={{fill:C.chalk,fontSize:11,fontFamily:display}}/>
+          <Tooltip {...tip} formatter={v=>[v,sort]}/>
+          <Bar dataKey="v" fill={C.gold} radius={[0,3,3,0]} label={{position:"right",fill:C.chalk,fontFamily:mono,fontSize:11}}/>
+        </BarChart>
+      </ResponsiveContainer>
+    </Panel>
+    {/* Coach cards grid */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+      {withStats.map((c,i)=>(
+        <div key={i} onClick={()=>setSel(sel?.name===c.name?null:c)} style={{background:sel?.name===c.name?`rgba(232,184,75,.08)`:C.panel,border:`1px solid ${sel?.name===c.name?C.gold:C.line}`,borderRadius:4,padding:16,cursor:"pointer"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+            <div style={{font:`700 15px ${display}`,color:C.chalk}}>{c.flag} {c.name}</div>
+            <div style={{font:`700 14px ${mono}`,color:C.gold}}>{c.winPct}%</div>
+          </div>
+          <div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>{c.country} · {c.period}</div>
+          <div style={{font:`12px ${display}`,color:C.mute,marginTop:6}}>{c.bestFinish}</div>
+        </div>
+      ))}
+    </div>
+    {/* Selected coach detail */}
+    {sel && <Panel style={{borderColor:C.gold}}>
+      <div style={{font:`800 22px/1 ${display}`,color:C.chalk,marginBottom:4}}>{sel.flag} {sel.name}</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:16}}>{sel.country} · {sel.period} · {sel.tournaments} tournament{sel.tournaments>1?"s":""}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:16}}>
+        <Stat label="Matches" value={sel.matches}/>
+        <Stat label="Won" value={sel.won} accent={C.grass}/>
+        <Stat label="Win %" value={sel.winPct+"%"} accent={C.gold}/>
+        <Stat label="Goals/game" value={sel.gpm}/>
+        <Stat label="Conceded/game" value={sel.gcpm}/>
+      </div>
+      <div style={{font:`13px/1.6 ${display}`,color:C.mute,borderLeft:`2px solid ${C.gold}`,paddingLeft:12,marginBottom:10}}>{sel.style}</div>
+      <div style={{font:`700 13px ${display}`,color:C.chalk}}>Best finish: <span style={{color:C.gold}}>{sel.bestFinish}</span></div>
+    </Panel>}
+  </div>;
+}
+
+/* ===================== UPSETS ===================== */
+function Upsets(){
+  const D=window.WCData;
+  const [sel,setSel]=useState(null);
+  return <div>
+    <H2 eyebrow="Giant Killers" title="Biggest upsets in World Cup history"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>Ranked by upset score — a composite of Elo rating gap, stage of the tournament, and margin of victory. Click any match for the full story.</p>
+    <Panel style={{marginBottom:16}}>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={D.UPSETS.map(u=>({name:u.match.split(" ")[0]+" "+u.year,score:u.upsetScore,full:u.match}))} layout="vertical" margin={{left:80,right:30,top:0,bottom:0}}>
+          <CartesianGrid stroke={C.line} horizontal={false}/>
+          <XAxis type="number" domain={[60,100]} tick={{fill:C.mute,fontSize:10,fontFamily:mono}}/>
+          <YAxis type="category" dataKey="name" width={100} tick={{fill:C.chalk,fontSize:11,fontFamily:display}}/>
+          <Tooltip {...tip} formatter={(v,n,p)=>[v+" / 100","Upset score"]}/>
+          <Bar dataKey="score" fill={C.red} radius={[0,3,3,0]} label={{position:"right",fill:C.chalk,fontFamily:mono,fontSize:11}}/>
+        </BarChart>
+      </ResponsiveContainer>
+    </Panel>
+    {D.UPSETS.map((u,i)=>(
+      <div key={i} onClick={()=>setSel(sel?.match===u.match?null:u)} style={{background:sel?.match===u.match?`rgba(217,84,63,.08)`:C.panel,border:`1px solid ${sel?.match===u.match?C.red:C.line}`,borderRadius:4,padding:16,marginBottom:10,cursor:"pointer"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
+          <div style={{font:`700 16px ${display}`,color:C.chalk}}>⚡ {u.match}</div>
+          <div style={{display:"flex",gap:10,font:`11px ${mono}`,color:C.mute}}>
+            <span style={{color:C.red,fontWeight:700}}>{u.year}</span>
+            <span>{u.stage}</span>
+            <span style={{color:C.gold}}>Upset score: {u.upsetScore}</span>
+          </div>
+        </div>
+        {sel?.match===u.match && <div>
+          <div style={{height:1,background:C.line,margin:"12px 0"}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:12}}>
+            <Stat label="Elo gap (rating pts)" value={u.eloDiff} accent={C.red}/>
+            <Stat label="Upset score /100" value={u.upsetScore} accent={C.red}/>
+          </div>
+          <div style={{font:`13px/1.7 ${display}`,color:C.mute,borderLeft:`2px solid ${C.red}`,paddingLeft:12}}>{u.detail}</div>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
+const NAV=[["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Coaches",CoachAnalytics],["Upsets",Upsets],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
 function App(){
   const [tab,setTab]=useState(0); const Active=NAV[tab][1];
   const [matchId,setMatchId]=useState(null);
