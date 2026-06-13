@@ -1457,24 +1457,17 @@ const NAV_GROUPS=[
 
 function App(){
   const [tab,setTab]=useState(0);
-  const [section,setSection]=useState(0); // active nav group
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
-  const navigate=(label)=>{
-    const i=NAV.findIndex(([l])=>l===label);
-    if(i>=0){
-      setTab(i);
-      // sync section highlight
-      const si=NAV_GROUPS.findIndex(g=>g.tabs.includes(label));
-      if(si>=0) setSection(si);
-      window.scrollTo({top:0,behavior:"smooth"});
-    }
-  };
-  const Active=tab===0?null:NAV[tab]?.[1]||null;
-  const activeLabel=NAV[tab]?.[0]||"Home";
 
-  // Which tabs to show in the sub-nav row (section's tabs)
-  const subTabs=section>=0?NAV_GROUPS[section].tabs:[];
+  const go=(i)=>{ setTab(i); window.scrollTo({top:0,behavior:"smooth"}); };
+  const navigate=(label)=>{ const i=NAV.findIndex(([l])=>l===label); if(i>=0) go(i); };
+
+  // Derive active section purely from current tab — no extra state
+  const activeLabel=NAV[tab]?.[0]||"Home";
+  const activeSection=NAV_GROUPS.findIndex(g=>g.tabs.includes(activeLabel));
+  const subTabs=activeSection>=0?NAV_GROUPS[activeSection].tabs:[];
+  const Active=tab===0?null:NAV[tab]?.[1]||null;
 
   return (<div style={{minHeight:"100vh"}}>
     <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
@@ -1482,7 +1475,7 @@ function App(){
 
     {/* HEADER */}
     <header style={{borderBottom:`1px solid ${C.line}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,background:C.pitch}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setTab(0)}>
+      <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>go(0)}>
         <div style={{width:30,height:30,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`,flexShrink:0}}></div>
         <div>
           <div style={{font:`900 16px/1 ${display}`,letterSpacing:"-.01em"}}>WORLD CUP INTELLIGENCE HUB</div>
@@ -1492,31 +1485,34 @@ function App(){
       <div style={{font:`600 11px ${mono}`,color:C.red,display:"flex",alignItems:"center",gap:6}}><span className="pulse"></span>LIVE</div>
     </header>
 
-    {/* NAV — two rows: section tabs + sub-tabs */}
+    {/* NAV */}
     <div style={{background:C.pitch,borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:20}}>
-      {/* Row 1: section groups */}
+      {/* Row 1 — section labels. Clicking navigates to first tab in that section. */}
       <div style={{display:"flex",padding:"0 16px",gap:2,borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
-        <button onClick={()=>{setTab(0);setSection(-1);window.scrollTo({top:0,behavior:"smooth"});}}
-          style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",color:tab===0?C.gold:C.mute,borderBottom:`2px solid ${tab===0?C.gold:"transparent"}`,whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em"}}>
+        <button onClick={()=>go(0)}
+          style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
+            color:tab===0?C.gold:C.mute,borderBottom:`2px solid ${tab===0?C.gold:"transparent"}`,
+            whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em"}}>
           HOME
         </button>
         {NAV_GROUPS.map((g,gi)=>{
-          const isActive=section===gi&&tab!==0;
-          const hasActive=g.tabs.includes(activeLabel);
-          return <button key={g.label} onClick={()=>setSection(gi===section?gi:gi)}
+          const isActive=activeSection===gi;
+          // Navigate to the first tab in this section on click
+          const firstTabIdx=NAV.findIndex(([l])=>l===g.tabs[0]);
+          return <button key={g.label} onClick={()=>go(firstTabIdx)}
             style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
-              color:hasActive?C.gold:C.mute,borderBottom:`2px solid ${hasActive?C.gold:"transparent"}`,
+              color:isActive?C.gold:C.mute,borderBottom:`2px solid ${isActive?C.gold:"transparent"}`,
               whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em",display:"flex",alignItems:"center",gap:5}}>
             <span style={{fontSize:8}}>{g.icon}</span>{g.label}
           </button>;
         })}
       </div>
-      {/* Row 2: sub-tabs for active section */}
-      {tab!==0&&subTabs.length>0&&<div style={{display:"flex",padding:"0 16px",overflowX:"auto",gap:0}}>
+      {/* Row 2 — sub-tabs. Always visible when inside a section. */}
+      {subTabs.length>0&&<div style={{display:"flex",padding:"0 16px",overflowX:"auto",gap:0}}>
         {subTabs.map(label=>{
           const i=NAV.findIndex(([l])=>l===label);
           const active=tab===i;
-          return <button key={label} onClick={()=>{setTab(i);window.scrollTo({top:0,behavior:"smooth"});}}
+          return <button key={label} onClick={()=>go(i)}
             style={{font:`500 12px ${display}`,padding:"9px 14px",cursor:"pointer",background:"none",border:"none",
               color:active?C.chalk:C.mute,borderBottom:`2px solid ${active?C.gold:"transparent"}`,
               whiteSpace:"nowrap",flexShrink:0}}>
