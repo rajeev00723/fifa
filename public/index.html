@@ -76,6 +76,26 @@ const Select = ({label,value,onChange,options}) => (
 );
 const tip = {contentStyle:{background:C.pitch,border:`1px solid ${C.line}`,fontFamily:mono,fontSize:12,color:C.chalk},cursor:{fill:"rgba(255,255,255,.03)"}};
 
+// Shared time/date helpers — always render in the VISITOR'S local timezone.
+// Passing no timeZone option to Intl/toLocaleTimeString uses the browser's
+// local timezone automatically. We append the short TZ name (e.g. "GMT+8")
+// so users know exactly what timezone they're seeing.
+const TZ_LABEL = (() => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone.replace("_"," "); } catch { return ""; }
+})();
+function localTime(utcString) {
+  if (!utcString) return "—";
+  return new Date(utcString).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+}
+function localDate(utcString) {
+  if (!utcString) return "—";
+  return new Date(utcString).toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"});
+}
+function localDateTime(utcString) {
+  if (!utcString) return "—";
+  return localDate(utcString) + " · " + localTime(utcString);
+}
+
 /* ===================== MATCH DETAIL MODAL ===================== */
 function MatchModal({id,onClose}){
   const [d,setD]=useState(null); const [err,setErr]=useState(null);
@@ -146,7 +166,9 @@ function Live({onOpenMatch}) {
         <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.home.score??"–"}</span><span style={{color:C.mute}}>:</span><span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score??"–"}</span>
       </div>
       <div style={{flex:1,display:"flex",alignItems:"center",gap:9,font:`600 15px ${display}`}}><Crest src={m.away.crest}/><span>{m.away.name}</span></div>
-      <div style={{width:70,textAlign:"right",font:`600 11px ${mono}`,color:m.status==="LIVE"?C.red:C.mute}}>{m.status==="LIVE"?(m.minute?m.minute+"'":"LIVE"):m.status==="FINISHED"?"FT":new Date(m.utcKickoff).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+      <div style={{width:82,textAlign:"right",font:`600 11px ${mono}`,color:m.status==="LIVE"?C.red:C.mute}}>
+        {m.status==="LIVE"?(m.minute?m.minute+"'":"LIVE"):m.status==="FINISHED"?"FT":localTime(m.utcKickoff)}
+      </div>
     </div>
   );
   return (<div>
@@ -158,7 +180,7 @@ function Live({onOpenMatch}) {
       {data.live.length>0 && <Panel style={{marginBottom:16,borderColor:C.red}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.red,marginBottom:6}}>● IN PLAY</div>{data.live.map(m=><Row key={m.id} m={m}/>)}</Panel>}
       <Panel style={{marginBottom:16}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold,marginBottom:6}}>FINISHED TODAY</div>{data.finishedToday.length?data.finishedToday.map(m=><Row key={m.id} m={m}/>):<Empty>No matches finished yet today.</Empty>}</Panel>
       <Panel><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6}}>UPCOMING TODAY</div>{data.upcomingToday.length?data.upcomingToday.map(m=><Row key={m.id} m={m}/>):<Empty>Nothing else scheduled today.</Empty>}</Panel>
-      <div style={{font:`11px ${mono}`,color:C.mute,textAlign:"center",marginTop:16}}>Feed updated {new Date(data.updatedAt).toLocaleTimeString()} · served from cache</div>
+      <div style={{font:`11px ${mono}`,color:C.mute,textAlign:"center",marginTop:16}}>Feed updated {localTime(data.updatedAt)} ({TZ_LABEL}) · served from cache</div>
     </div>}
   </div>);
 }
@@ -1163,7 +1185,63 @@ function Homepage({onNavigate}){
   </div>;
 }
 
-const NAV=[["Home",null],["Live",Live],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
+/* ===================== PAST RESULTS ===================== */
+function Results({onOpenMatch}){
+  const [data,setData]=useState(null); const [err,setErr]=useState(null);
+  const [days,setDays]=useState(7);
+  useEffect(()=>{
+    setData(null); setErr(null);
+    fetch(`/api/results?days=${days}`).then(r=>r.json()).then(j=>{if(j.error)throw new Error(j.error);setData(j);}).catch(e=>setErr(e.message));
+  },[days]);
+
+  // Sort group keys newest first
+  const groupKeys = data ? Object.keys(data.groups).sort((a,b)=>b.localeCompare(a)) : [];
+
+  const ResultRow=({m})=>(
+    <div onClick={()=>onOpenMatch&&onOpenMatch(m.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:`1px solid ${C.line}`,cursor:"pointer"}} title="View match detail">
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:9,font:`600 14px ${display}`}}>
+        <span>{m.home.name}</span><Crest src={m.home.crest}/>
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center",minWidth:80,justifyContent:"center"}}>
+        <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.home.score}</span>
+        <span style={{color:C.mute,font:`600 12px ${mono}`}}>–</span>
+        <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score}</span>
+      </div>
+      <div style={{flex:1,display:"flex",alignItems:"center",gap:9,font:`600 14px ${display}`}}>
+        <Crest src={m.away.crest}/><span>{m.away.name}</span>
+      </div>
+      <div style={{width:44,textAlign:"right",font:`600 10px ${mono}`,color:C.mute}}>FT</div>
+    </div>
+  );
+
+  return <div>
+    <H2 eyebrow="Past Results" title="Recent matches" right={
+      <div style={{display:"flex",gap:6}}>
+        {[3,7,14].map(d=><button key={d} onClick={()=>setDays(d)} style={{font:`600 11px ${mono}`,padding:"6px 10px",cursor:"pointer",borderRadius:3,border:`1px solid ${days===d?C.gold:C.line}`,background:days===d?C.gold:"transparent",color:days===d?C.pitch:C.mute}}>Last {d}d</button>)}
+      </div>}/>
+    <div style={{font:`11px ${mono}`,color:C.mute,marginBottom:16}}>
+      All times shown in your local timezone ({TZ_LABEL}). Click any match for the goal timeline and lineups.
+    </div>
+    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Results unavailable — {err}</span></Panel>}
+    {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono,textAlign:"center"}}>Loading results…</div>}
+    {data && groupKeys.length===0 && <Empty>No finished matches in the last {days} days yet — check back once games have been played.</Empty>}
+    {data && groupKeys.map(day=>(
+      <div key={day} style={{marginBottom:20}}>
+        <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".14em",padding:"8px 0",borderBottom:`1px solid ${C.line}`,marginBottom:2}}>
+          {localDate(day+"T12:00:00Z").toUpperCase()}
+        </div>
+        <Panel style={{padding:"4px 16px"}}>
+          {data.groups[day].map(m=><ResultRow key={m.id} m={m}/>)}
+        </Panel>
+      </div>
+    ))}
+    {data && <div style={{font:`11px ${mono}`,color:C.mute,textAlign:"center",marginTop:8}}>
+      Updated {localTime(data.updatedAt)} ({TZ_LABEL}) · cached 10 min server-side
+    </div>}
+  </div>;
+}
+
+const NAV=[["Home",null],["Live",Live],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
 function App(){
   const [tab,setTab]=useState(0); 
   const [matchId,setMatchId]=useState(null);
