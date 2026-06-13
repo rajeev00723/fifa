@@ -163,11 +163,12 @@ function MatchModal({id,onClose}){
           {hasEvents&&<>
             <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:8}}>TIMELINE</div>
             {d.events.map((e,i)=>(
-              <div key={i} style={{display:"flex",gap:12,padding:"7px 0",borderBottom:`1px solid ${C.line}`,font:`500 13px ${display}`}}>
-                <span style={{width:34,fontFamily:mono,fontSize:12,color:C.gold}}>{e.minute!=null?e.minute+"'":""}</span>
-                <span style={{width:22}}>{icon(e.type)}</span>
-                <span style={{flex:1}}>{e.player}{e.type==="GOAL"&&e.assist?<span style={{color:C.mute}}> (assist {e.assist})</span>:null}{e.type==="SUB"&&e.playerOut?<span style={{color:C.mute}}> ↔ {e.playerOut}</span>:null}</span>
-                <span style={{color:C.mute,fontFamily:mono,fontSize:11}}>{e.team}</span>
+              <div key={i} style={{display:"flex",gap:12,padding:"8px 0",borderBottom:`1px solid ${C.line}`,alignItems:"center"}}>
+                <span style={{width:34,fontFamily:mono,fontSize:12,color:C.gold,flexShrink:0}}>{e.minute!=null?e.minute+"'":""}</span>
+                <span style={{width:20,flexShrink:0}}>{icon(e.type)}</span>
+                {e.type==="GOAL"&&<Avatar name={e.player} team={e.team} size={28}/>}
+                <span style={{flex:1,font:`500 13px ${display}`}}>{e.player}{e.type==="GOAL"&&e.assist?<span style={{color:C.mute}}> (assist {e.assist})</span>:null}{e.type==="SUB"&&e.playerOut?<span style={{color:C.mute}}> ↔ {e.playerOut}</span>:null}</span>
+                <span style={{color:C.mute,fontFamily:mono,fontSize:11,flexShrink:0}}>{e.team}</span>
               </div>
             ))}
           </>}
@@ -216,24 +217,40 @@ function Live({onOpenMatch}) {
 /* ===================== SCORER RACE (live) ===================== */
 function ScorerRace(){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
+  const [statTab,setStatTab]=useState("goals");
   useEffect(()=>{ fetch("/api/scorers").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
-  const rows=(data?.scorers||[]).slice(0,12).map(s=>({name:s.player,goals:s.goals,team:s.team}));
+  const tabs=[["goals","⚽ Goals"],["assists","🎯 Assists"],["penalties","🎯 Pens"]];
+  const rows=(data?.scorers||[])
+    .filter(s=>(s[statTab]||0)>0)
+    .sort((a,b)=>(b[statTab]||0)-(a[statTab]||0))
+    .slice(0,15);
+  const max=rows[0]?.[statTab]||1;
   return (<div>
     <H2 eyebrow="Live — Golden Boot Race" title="Top scorers, this tournament"/>
+    <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+      {tabs.map(([k,l])=><button key={k} onClick={()=>setStatTab(k)} style={{font:`600 12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,border:`1px solid ${statTab===k?C.gold:C.line}`,background:statTab===k?C.gold:"transparent",color:statTab===k?C.pitch:C.mute}}>{l}</button>)}
+    </div>
     {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Scorers unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
-    {data && rows.length===0 && <Empty>No goals recorded yet — check back once matches are underway.</Empty>}
+    {data && rows.length===0 && <Empty>No data yet for this stat — check back once more matches are played.</Empty>}
     {rows.length>0 && <Panel>
-      <ResponsiveContainer width="100%" height={Math.max(260,rows.length*34)}>
-        <BarChart data={rows} layout="vertical" margin={{left:30,right:30,top:0,bottom:0}}>
-          <CartesianGrid stroke={C.line} horizontal={false}/>
-          <XAxis type="number" tick={{fill:C.mute,fontSize:11,fontFamily:mono}} allowDecimals={false}/>
-          <YAxis type="category" dataKey="name" width={130} tick={{fill:C.chalk,fontSize:12,fontFamily:display}}/>
-          <Tooltip {...tip} formatter={(v,n,p)=>[v+" goals — "+p.payload.team,"Goals"]}/>
-          <Bar dataKey="goals" fill={C.gold} radius={[0,3,3,0]} label={{position:"right",fill:C.chalk,fontFamily:mono,fontSize:11}}/>
-        </BarChart>
-      </ResponsiveContainer>
-      <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>Live from your feed, cached server-side. Updates as goals go in.</div>
+      {rows.map((s,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 0",borderBottom:`1px solid ${C.line}`}}>
+          <span style={{font:`800 15px ${mono}`,color:i===0?C.gold:i<3?C.chalk:C.mute,width:24,textAlign:"right",flexShrink:0}}>{i+1}</span>
+          <Avatar name={s.player} team={s.team} size={42}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{font:`700 15px ${display}`,color:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.player}</div>
+            <div style={{font:`11px ${mono}`,color:C.mute,marginTop:3}}>{s.team}</div>
+          </div>
+          <div style={{width:120,height:6,background:C.pitch2,borderRadius:3,overflow:"hidden",flexShrink:0}}>
+            <div style={{width:((s[statTab]||0)/max*100)+"%",height:"100%",borderRadius:3,background:i===0?C.gold:i<3?C.goldDim:C.line}}/>
+          </div>
+          <span style={{font:`900 22px/1 ${display}`,color:i===0?C.gold:i<3?C.chalk:C.mute,minWidth:28,textAlign:"right",flexShrink:0}}>{s[statTab]||0}</span>
+        </div>
+      ))}
+      <div style={{font:`11px ${mono}`,color:C.mute,marginTop:14,paddingTop:12,borderTop:`1px solid ${C.line}`}}>
+        Live from your feed · cached server-side · upgrades as goals go in
+      </div>
     </Panel>}
   </div>);
 }
@@ -265,11 +282,12 @@ function SquadModal({id,onClose}){
             <div key={pos} style={{marginBottom:14}}>
               <div style={{font:`600 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:6}}>{pos.toUpperCase()}</div>
               {players.map((p,i)=>(
-                <div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:`1px solid ${C.line}`,font:`500 13px ${display}`,alignItems:"center"}}>
-                  <span style={{width:24,fontFamily:mono,fontSize:11,color:C.mute,textAlign:"right"}}>{p.shirt??""}</span>
-                  <span style={{flex:1}}>{p.name}</span>
-                  <span style={{font:`11px ${mono}`,color:C.mute}}>{p.nationality}</span>
-                  <span style={{width:30,textAlign:"right",font:`11px ${mono}`,color:C.mute}}>{age(p.dob)}y</span>
+                <div key={i} style={{display:"flex",gap:10,padding:"7px 0",borderBottom:`1px solid ${C.line}`,alignItems:"center"}}>
+                  <Avatar name={p.name} team={d.team} size={30}/>
+                  <span style={{width:24,fontFamily:mono,fontSize:11,color:C.mute,textAlign:"right",flexShrink:0}}>{p.shirt??""}</span>
+                  <span style={{flex:1,font:`500 13px ${display}`,color:C.chalk}}>{p.name}</span>
+                  <span style={{font:`11px ${mono}`,color:C.mute,flexShrink:0}}>{p.nationality}</span>
+                  <span style={{width:30,textAlign:"right",font:`11px ${mono}`,color:C.mute,flexShrink:0}}>{age(p.dob)}y</span>
                 </div>
               ))}
             </div>
@@ -769,8 +787,9 @@ function TeamIntelligence(){
       </Panel>
       <Panel>
         <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",marginBottom:12}}>LEGENDARY PLAYERS</div>
-        {t.bestPlayers.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${C.line}`}}>
-          <span style={{font:`800 13px ${mono}`,color:i<3?C.gold:C.mute,width:18}}>{i+1}</span>
+        {t.bestPlayers.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.line}`}}>
+          <span style={{font:`800 13px ${mono}`,color:i<3?C.gold:C.mute,width:18,flexShrink:0}}>{i+1}</span>
+          <Avatar name={p} team={sel} size={32}/>
           <span style={{font:`600 14px ${display}`,color:C.chalk}}>{p}</span>
         </div>)}
       </Panel>
@@ -1285,13 +1304,13 @@ function Homepage({onNavigate}){
     <LiveStatsWidget onNavigate={onNavigate}/>
 
     {/* STORY TEASER */}
-    <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer"}} onClick={()=>onNavigate("Stories")}>
+    {D.STORIES.greatestFinals.length>0 && <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer"}} onClick={()=>onNavigate("Stories")}>
       <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:10}}>📖 STORY OF THE TOURNAMENT</div>
-      <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk,marginBottom:6}}>{D.STORIES.greatestFinals[3].icon} {D.STORIES.greatestFinals[3].title}</div>
-      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>{D.STORIES.greatestFinals[3].year} · {D.STORIES.greatestFinals[3].subtitle}</div>
-      <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{D.STORIES.greatestFinals[3].story.slice(0,180)}…</div>
+      <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk,marginBottom:6}}>{D.STORIES.greatestFinals[3]?.icon||D.STORIES.greatestFinals[0].icon} {D.STORIES.greatestFinals[3]?.title||D.STORIES.greatestFinals[0].title}</div>
+      <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).year} · {(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).subtitle}</div>
+      <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).story.slice(0,180)}…</div>
       <div style={{font:`12px ${mono}`,color:C.gold,marginTop:12}}>Read all stories →</div>
-    </Panel>
+    </Panel>}
   </div>;
 }
 
@@ -1363,8 +1382,11 @@ function App(){
   const [tab,setTab]=useState(0); 
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
-  const Active=NAV[tab][1];
-  const navigate=(label)=>{ const i=NAV.findIndex(([l])=>l===label); if(i>=0)setTab(i); };
+  const navigate=(label)=>{
+    const i=NAV.findIndex(([l])=>l===label);
+    if(i>=0){ setTab(i); window.scrollTo({top:0,behavior:"smooth"}); }
+  };
+  const Active=tab===0?null:NAV[tab]?.[1]||null;
   return (<div style={{minHeight:"100vh"}}>
     <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
     <SquadModal id={teamId} onClose={()=>setTeamId(null)}/>
@@ -1381,7 +1403,7 @@ function App(){
       {NAV.map(([label],i)=>(<button key={label} onClick={()=>setTab(i)} style={{font:`600 12px ${display}`,padding:"13px 14px",cursor:"pointer",background:"none",border:"none",color:tab===i?C.chalk:C.mute,borderBottom:`2px solid ${tab===i?C.gold:"transparent"}`,whiteSpace:"nowrap",flexShrink:0}}>{label}</button>))}
     </nav>
     <main style={{maxWidth:1040,margin:"0 auto",padding:"28px 24px 80px"}}>
-      {tab===0 ? <Homepage onNavigate={navigate}/> : <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/>}
+      {tab===0 ? <Homepage onNavigate={navigate}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
     </main>
     <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center"}}>
       <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
