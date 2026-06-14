@@ -1376,12 +1376,26 @@ function Homepage({onNavigate}){
   const M=window.WCModel;
   const [q,setQ]=useState("");
   const [results,setResults]=useState([]);
+  const [visits,setVisits]=useState(null);
   const todayEvts=D.todayEvents();
   const today=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long"});
   useEffect(()=>{ setResults(q.length>1?D.search(q,5):[]); },[q]);
+  useEffect(()=>{ fetch("/api/visit").then(r=>r.json()).then(setVisits).catch(()=>{}); },[]);
   const pills=["Can Brazil win 2026?","Messi vs Maradona","Biggest upsets ever","Best coaches","Germany finals record","2022 final story"];
   const scores=D.allIntelligenceScores().slice(0,3);
   const topCoach=D.COACHES_RANKED[0];
+
+  // Sparkline from visit history — tiny inline SVG
+  const Sparkline=({history})=>{
+    if(!history||history.length<2) return null;
+    const counts=history.map(h=>h.count);
+    const max=Math.max(...counts)||1;
+    const W=80, H=24, pts=counts.map((c,i)=>`${Math.round(i/(counts.length-1)*W)},${Math.round(H-(c/max)*H)}`).join(" ");
+    return <svg viewBox={`0 0 ${W} ${H}`} style={{width:80,height:24,display:"inline-block",verticalAlign:"middle",marginLeft:8}}>
+      <polyline points={pts} fill="none" stroke={C.grass} strokeWidth="1.5" strokeLinejoin="round"/>
+    </svg>;
+  };
+
   return <div>
     {/* HERO */}
     <div style={{textAlign:"center",padding:"40px 0 32px",borderBottom:`1px solid ${C.line}`,marginBottom:28}}>
@@ -1405,6 +1419,13 @@ function Homepage({onNavigate}){
       <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
         {pills.map(p=><button key={p} onClick={()=>setQ(p)} style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{p}</button>)}
       </div>
+      {/* Visitor stats */}
+      {visits&&visits.total>0&&<div style={{marginTop:20,font:`11px ${mono}`,color:C.mute,display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
+        <span>👁 <b style={{color:C.chalk}}>{visits.total.toLocaleString()}</b> total visits</span>
+        <span style={{color:C.line}}>·</span>
+        <span><b style={{color:C.chalk}}>{visits.today.toLocaleString()}</b> today</span>
+        {visits.history?.length>1&&<span style={{display:"flex",alignItems:"center",gap:4,color:C.mute}}>14-day trend <Sparkline history={visits.history}/></span>}
+      </div>}
     </div>
 
     {/* TODAY IN HISTORY */}
@@ -1542,6 +1563,9 @@ function App(){
   const [tab,setTab]=useState(0);
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
+
+  // Fire a visit count ping once when the app loads — no personal data stored
+  useEffect(()=>{ fetch("/api/visit",{method:"POST"}).catch(()=>{}); },[]);
 
   const go=(i)=>{ setTab(i); window.scrollTo({top:0,behavior:"smooth"}); };
   const navigate=(label)=>{ const i=NAV.findIndex(([l])=>l===label); if(i>=0) go(i); };
