@@ -141,8 +141,13 @@ function localDateTime(utcString) {
 /* ===================== MATCH DETAIL MODAL ===================== */
 function MatchModal({id,onClose}){
   const [d,setD]=useState(null); const [err,setErr]=useState(null);
-  useEffect(()=>{ if(!id)return; setD(null);setErr(null);
+  const [story,setStory]=useState(null);
+  useEffect(()=>{
+    if(!id)return;
+    setD(null); setErr(null); setStory(null);
+    // Fetch match detail and story in parallel
     fetch("/api/match?id="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
+    fetch("/api/story?id="+id).then(r=>r.json()).then(j=>{ if(!j.error) setStory(j); }).catch(()=>{});
   },[id]);
   if(!id) return null;
   const hasEvents=d?.events?.length>0;
@@ -218,6 +223,33 @@ function MatchModal({id,onClose}){
             <div style={{font:`600 11px ${mono}`,color:C.mute,letterSpacing:".12em",margin:"20px 0 10px"}}>LINEUPS</div>
             <div style={{display:"flex",gap:20}}><Side s={d.home}/><Side s={d.away}/></div>
           </>}
+
+          {/* ── MATCH STORY ─────────────────────────────────────── */}
+          {isFinished&&<div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${C.line}`}}>
+            <div style={{font:`600 11px ${mono}`,color:C.gold,letterSpacing:".12em",marginBottom:12}}>📰 MATCH STORY</div>
+            {!story&&<div style={{font:`12px ${mono}`,color:C.mute,padding:"10px 0"}}>Generating story…</div>}
+            {story&&<>
+              {/* headline */}
+              {story.headline&&<div style={{font:`800 18px/1.2 ${display}`,color:C.chalk,marginBottom:12}}>{story.headline}</div>}
+              {/* key facts */}
+              {story.facts?.length>0&&<div style={{marginBottom:14}}>
+                <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>KEY FACTS</div>
+                {story.facts.map((f,i)=>(
+                  <div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:`1px solid ${C.line}`,alignItems:"flex-start"}}>
+                    <span style={{color:C.gold,fontFamily:mono,fontSize:12,flexShrink:0,marginTop:1}}>▸</span>
+                    <span style={{font:`13px/1.5 ${display}`,color:C.chalk}}>{f}</span>
+                  </div>
+                ))}
+              </div>}
+              {/* AI narrative */}
+              {story.narrative&&<>
+                <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>MATCH REPORT</div>
+                <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{story.narrative}</div>
+                <div style={{font:`10px ${mono}`,color:C.line,marginTop:10}}>AI-generated from match data · Not a human report</div>
+              </>}
+              {!story.narrative&&<div style={{font:`12px ${mono}`,color:C.mute}}>Add ANTHROPIC_API_KEY to Vercel env vars to enable AI match reports.</div>}
+            </>}
+          </div>}
         </div>}
       </div>
     </div>
