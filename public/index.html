@@ -1434,18 +1434,20 @@ function NationEvolution(){
 /* ===================== LIVE STATS WIDGET (homepage) ===================== */
 // Team colours for avatar backgrounds — keyed to common nationalities in the feed.
 const TEAM_COLOURS = {
-  "USA":"#B22234","United States":"#B22234","Brazil":"#009C3B","France":"#003189",
-  "Germany":"#000000","Argentina":"#74ACDF","Spain":"#AA151B","England":"#CF081F",
-  "Portugal":"#006600","Mexico":"#006847","Canada":"#FF0000","Morocco":"#C1272D",
-  "Japan":"#BC002D","South Korea":"#003478","Netherlands":"#FF6600","Croatia":"#FF0000",
-  "Senegal":"#00853F","Ecuador":"#FFD100","Switzerland":"#FF0000","Uruguay":"#5EAFE4",
-  "Australia":"#00843D","Poland":"#DC143C","Bosnia and Herzegovina":"#002395",
-  "Czechia":"#D7141A","Paraguay":"#D52B1E","Serbia":"#C6363C","Ghana":"#006B3F",
-  "Ivory Coast":"#F77F00","Belgium":"#000000","Colombia":"#FCD116","Peru":"#D91023",
-  "Saudi Arabia":"#006C35","Qatar":"#8D1B3D","Iran":"#239F40","Iraq":"#007A3D",
-  "Tunisia":"#E70013","Egypt":"#CE1126","Algeria":"#006233","Nigeria":"#008751",
-  "Cameroon":"#007A5E","Scotland":"#0065BF","Haiti":"#00209F","Sweden":"#006AA7",
-  "Norway":"#EF2B2D","Turkey":"#E30A17","New Zealand":"#00247D","Denmark":"#C60C30",
+  "USA":"#B22234","United States":"#B22234","Brazil":"#009C3B","Argentina":"#74ACDF",
+  "Mexico":"#006847","Canada":"#FF0000","Colombia":"#FCD116","Ecuador":"#FFD100",
+  "Uruguay":"#5EAFE4","Paraguay":"#D52B1E","Panama":"#DA121A","Haiti":"#00209F",
+  "Curacao":"#003087","France":"#003189","Germany":"#000000","Spain":"#AA151B",
+  "England":"#CF081F","Portugal":"#006600","Netherlands":"#FF6600","Belgium":"#000000",
+  "Croatia":"#FF0000","Switzerland":"#FF0000","Austria":"#ED2939","Scotland":"#0065BF",
+  "Norway":"#EF2B2D","Sweden":"#006AA7","Czechia":"#D7141A","Türkiye":"#E30A17",
+  "Turkey":"#E30A17","Bosnia and Herzegovina":"#002395","Morocco":"#C1272D",
+  "Senegal":"#00853F","Egypt":"#CE1126","Algeria":"#006233","Tunisia":"#E70013",
+  "Ghana":"#006B3F","Ivory Coast":"#F77F00","South Africa":"#007A4D",
+  "Cape Verde":"#003893","DR Congo":"#007FFF","Japan":"#BC002D",
+  "South Korea":"#003478","Australia":"#00843D","Iran":"#239F40",
+  "Saudi Arabia":"#006C35","Qatar":"#8D1B3D","Uzbekistan":"#1EB53A",
+  "Jordan":"#007A3D","Iraq":"#CE1126","New Zealand":"#00247D",
 };
 function initials(name) {
   if (!name) return "?";
