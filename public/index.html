@@ -362,7 +362,7 @@ function MatchModal({id,onClose}){
                 <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{story.narrative}</div>
                 <div style={{font:`10px ${mono}`,color:C.line,marginTop:10}}>AI-generated from match data · Not a human report</div>
               </>}
-              {!story.narrative&&<div style={{font:`12px ${mono}`,color:C.mute}}>Match reports.</div>}
+              {!story.narrative&&<div style={{font:`12px ${mono}`,color:C.mute}}>Add ANTHROPIC_API_KEY to Vercel env vars to enable AI match reports.</div>}
             </>}
           </div>}
         </div>}
@@ -449,7 +449,7 @@ function ScorerRace(){
 function SquadModal({id,onClose}){
   const [d,setD]=useState(null); const [err,setErr]=useState(null);
   useEffect(()=>{ if(!id)return; setD(null);setErr(null);
-    fetch("/api/squad?id="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
+    fetch("/api/match?squad="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
   },[id]);
   if(!id) return null;
   const age=(dob)=>{ if(!dob)return"—"; const d=new Date(dob); return Math.floor((Date.now()-d)/3.15576e10); };
@@ -1863,7 +1863,98 @@ function VsMode(){
   </div>;
 }
 
-const NAV=[["Home",null],["Live",Live],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Vs Mode",VsMode],["Trivia",DailyTrivia],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
+/* ===================== NEWS FEED ===================== */
+function NewsFeed(){
+  const [data,setData]=useState(null);
+  const [err,setErr]=useState(null);
+  const [filter,setFilter]=useState("all");
+  useEffect(()=>{
+    fetch("/api/visit?news=1").then(r=>r.json()).then(j=>{
+      if(j.error&&!j.items) throw new Error(j.error);
+      setData(j);
+    }).catch(e=>setErr(e.message));
+  },[]);
+
+  const sources=data?[...new Set(data.items.map(i=>i.src))]:[];
+  const items=(data?.items||[]).filter(i=>filter==="all"||i.src===filter);
+  const timeAgo=(pub)=>{
+    if(!pub) return "";
+    const diff=Date.now()-new Date(pub).getTime();
+    const h=Math.floor(diff/3600000);
+    if(h<1) return `${Math.floor(diff/60000)}m ago`;
+    if(h<24) return `${h}h ago`;
+    return `${Math.floor(h/24)}d ago`;
+  };
+
+  return <div>
+    <H2 eyebrow="Football News" title="Latest World Cup news"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>
+      Live headlines from BBC Sport, The Guardian, and Google News. Updates every 30 minutes. Click any story to read the full article.
+    </p>
+
+    {/* Source filter */}
+    {sources.length>0&&<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+      {["all",...sources].map(s=><button key={s} onClick={()=>setFilter(s)}
+        style={{font:`600 11px ${mono}`,padding:"6px 12px",cursor:"pointer",borderRadius:20,
+          border:`1px solid ${filter===s?C.gold:C.line}`,
+          background:filter===s?C.gold:"transparent",
+          color:filter===s?C.pitch:C.mute}}>
+        {s==="all"?"All sources":s}
+      </button>)}
+    </div>}
+
+    {err&&<Panel style={{borderColor:C.red}}>
+      <div style={{font:`13px ${display}`,color:C.red}}>News feed unavailable — {err}</div>
+      <div style={{font:`12px ${mono}`,color:C.mute,marginTop:6}}>RSS feeds may be temporarily unreachable. Try again in a few minutes.</div>
+    </Panel>}
+
+    {!data&&!err&&<div style={{display:"grid",gap:12}}>
+      {[1,2,3,4,5].map(i=><Panel key={i} style={{padding:16}}>
+        <Skeleton width="60%" height={14} style={{marginBottom:8}}/>
+        <Skeleton width="90%" height={12} style={{marginBottom:6}}/>
+        <Skeleton width="75%" height={12}/>
+      </Panel>)}
+    </div>}
+
+    {items.length>0&&<div style={{display:"grid",gap:10}}>
+      {items.map((item,i)=>(
+        <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
+          style={{textDecoration:"none",display:"block"}}>
+          <div style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:4,padding:16,
+            transition:"border-color .15s,background .15s",cursor:"pointer"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.background=`rgba(232,184,75,.04)`;}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=C.line;e.currentTarget.style.background=C.panel;}}>
+            <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+              {item.img&&<img src={item.img} alt="" loading="lazy"
+                style={{width:80,height:54,objectFit:"cover",borderRadius:3,flexShrink:0,border:`1px solid ${C.line}`}}
+                onError={e=>e.target.style.display="none"}/>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{font:`700 15px/1.3 ${display}`,color:C.chalk,marginBottom:6}}>{item.title}</div>
+                {item.desc&&<div style={{font:`12px/1.5 ${display}`,color:C.mute,marginBottom:8,
+                  overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+                  {item.desc}
+                </div>}
+                <div style={{display:"flex",gap:10,font:`10px ${mono}`,color:C.mute,alignItems:"center"}}>
+                  <span style={{color:C.gold,fontWeight:600}}>{item.src}</span>
+                  {item.pub&&<span>{timeAgo(item.pub)}</span>}
+                  <span style={{marginLeft:"auto",color:C.gold}}>Read →</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </a>
+      ))}
+    </div>}
+
+    {data&&items.length===0&&<Empty>No news articles found for this filter. Try "All sources".</Empty>}
+
+    {data&&<div style={{font:`11px ${mono}`,color:C.mute,marginTop:14,textAlign:"center"}}>
+      Updated {localTime(data.fetchedAt)} · Cached 30 min · Links open original sources
+    </div>}
+  </div>;
+}
+
+const NAV=[["Home",null],["Live",Live],["News",NewsFeed],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Vs Mode",VsMode],["Trivia",DailyTrivia],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
 
 // Grouped nav: section → [tab labels]. Order matches NAV array labels exactly.
 /* ===================== FOOTER VISITS ===================== */
@@ -1936,7 +2027,7 @@ function FooterVisits(){
 }
 
 const NAV_GROUPS=[
-  {label:"LIVE",  icon:"●", tabs:["Live","Results","Standings","Scorer Race"]},
+  {label:"LIVE",  icon:"●", tabs:["Live","News","Results","Standings","Scorer Race"]},
   {label:"INTEL", icon:"◈", tabs:["Search","Vs Mode","Teams","Scores","Coaches","Coach Ranking","Upsets","Stories","Knowledge Graph","Nation Evolution"]},
   {label:"PREDICT",icon:"◎",tabs:["Qual Odds","Path to Final","Team Predictor","Golden Boot"]},
   {label:"MORE",  icon:"⊞", tabs:["Trivia","History","Alerts"]},
