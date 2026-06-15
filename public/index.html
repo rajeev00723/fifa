@@ -41,8 +41,24 @@ const { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip
         AreaChart, Area } = Recharts;
 const M = window.WCModel, H = window.WCHistory;
 
-const C = { pitch:"#0a1f1a", pitch2:"#0f2a22", panel:"#10241d", line:"#1d3b31",
-  gold:"#e8b84b", goldDim:"#9a7c33", chalk:"#eef3ee", mute:"#7e9a8c", grass:"#3fae6f", red:"#d9543f" };
+// ── THEME SYSTEM ─────────────────────────────────────────────────────────────
+const THEMES = {
+  dark: {
+    pitch:"#0a1f1a", pitch2:"#0f2a22", panel:"#10241d", line:"#1d3b31",
+    gold:"#e8b84b", goldDim:"#9a7c33", chalk:"#eef3ee", mute:"#7e9a8c",
+    grass:"#3fae6f", red:"#d9543f", bg:"#0a1f1a", navBg:"#0a1f1a",
+  },
+  light: {
+    pitch:"#ffffff", pitch2:"#f4f7f5", panel:"#ffffff", line:"#dde8e3",
+    gold:"#b8860b", goldDim:"#9a7333", chalk:"#1a2e24", mute:"#5a7a6c",
+    grass:"#1e8a4a", red:"#c0392b", bg:"#f4f7f5", navBg:"#ffffff",
+  },
+};
+const ThemeCtx = React.createContext("dark");
+// C is a proxy that reads from the current theme — updated on toggle
+let _theme = "dark";
+const C = new Proxy({}, { get: (_, k) => THEMES[_theme][k] });
+
 const mono="'JetBrains Mono',ui-monospace,monospace";
 const display="'Archivo','Arial Narrow',sans-serif";
 const REFRESH_MS = 60000;
@@ -837,7 +853,10 @@ function Search(){
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder='Try "Brazil", "Klose", "biggest upset", "most finals"...'
         style={{width:"100%",font:`500 16px ${display}`,padding:"14px 16px 14px 44px",color:C.chalk,background:C.panel,border:`1px solid ${q?C.gold:C.line}`,borderRadius:6,outline:"none"}}/>
       <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",font:"18px sans-serif"}}>🔍</span>
+      {q&&<button onClick={()=>{setQ(""); setSel(null);}} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",font:`13px ${mono}`,color:C.mute,padding:"4px 8px"}}>✕ Clear</button>}
     </div>
+
+    {/* Results list */}
     {results.length>0 && <div style={{background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:6,overflow:"hidden",marginBottom:4}}>
       {results.map((r,i)=>(
         <div key={i} onClick={()=>setSel(r)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",cursor:"pointer",background:sel?.key===r.key?"rgba(232,184,75,.08)":"transparent",borderBottom:`1px solid ${C.line}`}}>
@@ -847,11 +866,32 @@ function Search(){
         </div>
       ))}
     </div>}
+
+    {/* Empty state — query typed but nothing found */}
+    {q.length>1 && results.length===0 && !sel && <div style={{textAlign:"center",padding:"40px 20px",background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,marginBottom:8}}>
+      <div style={{font:"32px sans-serif",marginBottom:12}}>🔍</div>
+      <div style={{font:`700 18px/1.2 ${display}`,color:C.chalk,marginBottom:8}}>No results for "{q}"</div>
+      <div style={{font:`13px/1.6 ${display}`,color:C.mute,maxWidth:380,margin:"0 auto 20px"}}>
+        The search covers World Cup teams, coaches, famous upsets, and records — not individual players or specific match scores. Try one of these instead:
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:16}}>
+        {["Brazil","Germany","Didier Deschamps","most goals","biggest upset","2022 final"].map(s=>(
+          <button key={s} onClick={()=>setQ(s)} style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold}}>{s}</button>
+        ))}
+      </div>
+      <button onClick={()=>{setQ(""); setSel(null);}} style={{font:`600 12px ${mono}`,padding:"8px 16px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>← Clear search</button>
+    </div>}
+
     {sel && <Preview item={sel}/>}
-    {!sel && !q && <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:16}}>
-      {["Brazil","Germany upsets","Didier Deschamps","most goals","Saudi Arabia 2022","Spain 2010"].map(s=>(
-        <button key={s} onClick={()=>setQ(s)} style={{font:`12px ${mono}`,padding:"7px 12px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{s}</button>
-      ))}
+
+    {/* Default state — no query yet */}
+    {!sel && !q && <div>
+      <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".14em",marginBottom:10,marginTop:16}}>TRENDING SEARCHES</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {["Brazil","Germany upsets","Didier Deschamps","most goals","Saudi Arabia 2022","Spain 2010","Miroslav Klose","Netherlands finals"].map(s=>(
+          <button key={s} onClick={()=>setQ(s)} style={{font:`12px ${mono}`,padding:"7px 12px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{s}</button>
+        ))}
+      </div>
     </div>}
   </div>;
 }
@@ -1578,37 +1618,60 @@ function App(){
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
 
+  // Theme — persisted in localStorage
+  const [theme,setTheme]=useState(()=>{
+    try { return localStorage.getItem("wc-theme")||"dark"; } catch { return "dark"; }
+  });
+  _theme=theme; // update the C proxy
+  const toggleTheme=()=>{
+    const next=theme==="dark"?"light":"dark";
+    setTheme(next);
+    try { localStorage.setItem("wc-theme",next); } catch {}
+  };
+  // Apply bg colour to body so no white flash outside the app div
+  useEffect(()=>{ document.body.style.background=THEMES[theme].bg; },[theme]);
+
   // Fire a visit count ping once when the app loads — no personal data stored
   useEffect(()=>{ fetch("/api/visit",{method:"POST"}).catch(()=>{}); },[]);
 
   const go=(i)=>{ setTab(i); window.scrollTo({top:0,behavior:"smooth"}); };
   const navigate=(label)=>{ const i=NAV.findIndex(([l])=>l===label); if(i>=0) go(i); };
 
-  // Derive active section purely from current tab — no extra state
   const activeLabel=NAV[tab]?.[0]||"Home";
   const activeSection=NAV_GROUPS.findIndex(g=>g.tabs.includes(activeLabel));
   const subTabs=activeSection>=0?NAV_GROUPS[activeSection].tabs:[];
   const Active=tab===0?null:NAV[tab]?.[1]||null;
 
-  return (<div style={{minHeight:"100vh"}}>
+  const isLight=theme==="light";
+
+  return (<ThemeCtx.Provider value={theme}><div style={{minHeight:"100vh",background:C.bg,color:C.chalk,transition:"background .2s,color .2s"}}>
     <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
     <SquadModal id={teamId} onClose={()=>setTeamId(null)}/>
 
     {/* HEADER */}
-    <header style={{borderBottom:`1px solid ${C.line}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,background:C.pitch}}>
+    <header style={{borderBottom:`1px solid ${C.line}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,background:C.navBg}}>
       <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>go(0)}>
-        <div style={{width:30,height:30,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.pitch}, 0 0 0 3px ${C.goldDim}`,flexShrink:0}}></div>
+        <div style={{width:30,height:30,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${C.gold}, ${C.goldDim})`,boxShadow:`0 0 0 2px ${C.navBg}, 0 0 0 3px ${C.goldDim}`,flexShrink:0}}></div>
         <div>
-          <div style={{font:`900 16px/1 ${display}`,letterSpacing:"-.01em"}}>WORLD CUP INTELLIGENCE HUB</div>
+          <div style={{font:`900 16px/1 ${display}`,letterSpacing:"-.01em",color:C.chalk}}>WORLD CUP INTELLIGENCE HUB</div>
           <div style={{font:`500 9px/1 ${mono}`,letterSpacing:".18em",color:C.mute,marginTop:4}}>LIVE · 2026 · USA · CANADA · MEXICO</div>
         </div>
       </div>
-      <div style={{font:`600 11px ${mono}`,color:C.red,display:"flex",alignItems:"center",gap:6}}><span className="pulse"></span>LIVE</div>
+      <div style={{display:"flex",alignItems:"center",gap:14}}>
+        {/* Theme toggle */}
+        <button onClick={toggleTheme} title={isLight?"Switch to dark mode":"Switch to light mode"}
+          style={{background:"none",border:`1px solid ${C.line}`,borderRadius:20,padding:"5px 12px",cursor:"pointer",
+            font:`600 11px ${mono}`,color:C.mute,display:"flex",alignItems:"center",gap:6,transition:"border-color .15s"}}>
+          <span style={{fontSize:14}}>{isLight?"🌙":"☀️"}</span>
+          <span>{isLight?"Dark":"Light"}</span>
+        </button>
+        <div style={{font:`600 11px ${mono}`,color:C.red,display:"flex",alignItems:"center",gap:6}}><span className="pulse"></span>LIVE</div>
+      </div>
     </header>
 
     {/* NAV */}
-    <div style={{background:C.pitch,borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:20}}>
-      {/* Row 1 — section labels. Clicking navigates to first tab in that section. */}
+    <div style={{background:C.navBg,borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:20}}>
+      {/* Row 1 — section labels */}
       <div style={{display:"flex",padding:"0 16px",gap:2,borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
         <button onClick={()=>go(0)}
           style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
@@ -1646,13 +1709,13 @@ function App(){
     <main style={{maxWidth:1040,margin:"0 auto",padding:"28px 24px 80px"}}>
       {tab===0 ? <Homepage onNavigate={navigate}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
     </main>
-    <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center"}}>
+    <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center",background:C.navBg}}>
       <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
       <div style={{marginTop:6}}>Live data via football-data.org · Historical 1930–2022 · Predictions are Elo-model estimates, not statements of fact.</div>
       <div style={{marginTop:6}}>Made by Rajeev · rajeevbuilds.dev · <a href="mailto:raj.ranjan.sinha@gmail.com" style={{color:C.gold,textDecoration:"none"}}>raj.ranjan.sinha@gmail.com</a></div>
       <FooterVisits/>
     </footer>
-  </div>);
+  </div></ThemeCtx.Provider>);
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
