@@ -154,6 +154,93 @@ function localDateTime(utcString) {
   return localDate(utcString) + " · " + localTime(utcString);
 }
 
+/* ── MICRO-INTERACTION COMPONENTS ────────────────────────────────────────── */
+
+/** Counts up from 0 to target value on mount — energetic "live app" feel */
+function AnimatedNumber({value, suffix="", duration=1200, style={}}){
+  const [display,setDisplay]=useState(0);
+  useEffect(()=>{
+    if(!value) return;
+    let start=null;
+    const step=(ts)=>{
+      if(!start) start=ts;
+      const progress=Math.min((ts-start)/duration,1);
+      // Ease out: fast at start, slow at end
+      const eased=1-Math.pow(1-progress,3);
+      setDisplay(Math.round(eased*value));
+      if(progress<1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  },[value]);
+  return <span style={style}>{display.toLocaleString()}{suffix}</span>;
+}
+
+/** Pulsing skeleton placeholder — shown while data is loading */
+function Skeleton({width="100%", height=18, radius=4, style={}}){
+  return <div style={{width,height,borderRadius:radius,background:`linear-gradient(90deg,${C.line} 25%,${C.pitch2} 50%,${C.line} 75%)`,backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",...style}}/>;
+}
+// Inject shimmer keyframe once
+if(!document.getElementById("shimmer-style")){
+  const s=document.createElement("style");
+  s.id="shimmer-style";
+  s.textContent=`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`;
+  document.head.appendChild(s);
+}
+
+/** Skeleton card for match rows while live data loads */
+function MatchSkeleton(){
+  return <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${C.line}`}}>
+    <div style={{flex:1,display:"flex",justifyContent:"flex-end",gap:8}}><Skeleton width={120} height={14}/><Skeleton width={24} height={24} radius={12}/></div>
+    <Skeleton width={80} height={20} radius={4}/>
+    <div style={{flex:1,display:"flex",gap:8}}><Skeleton width={24} height={24} radius={12}/><Skeleton width={120} height={14}/></div>
+  </div>;
+}
+
+/** Typewriter input placeholder — cycles through questions every 4s */
+function TypewriterInput({value, onChange, onKeyDown, style={}}){
+  const prompts=[
+    "Who has the most World Cup goals ever?",
+    "Did Morocco make history in 2022?",
+    "Which coach won the most tournaments?",
+    "What was the biggest upset in 1950?",
+    "How many finals has Germany reached?",
+    "Who scored the Goal of the Century?",
+    "Which team has the best knockout record?",
+    "What happened at the 1970 final?",
+  ];
+  const [ph,setPh]=useState("");
+  const [pidx,setPidx]=useState(0);
+  const [typing,setTyping]=useState(true);
+  useEffect(()=>{
+    if(value) return; // don't animate when user is typing
+    let i=0, timeout;
+    const target=prompts[pidx];
+    if(typing){
+      const tick=()=>{
+        i++;
+        setPh(target.slice(0,i));
+        if(i<target.length) timeout=setTimeout(tick,38);
+        else timeout=setTimeout(()=>setTyping(false),2200);
+      };
+      timeout=setTimeout(tick,38);
+    } else {
+      const tick=()=>{
+        i=ph.length;
+        const erase=()=>{
+          if(i>0){ i--; setPh(target.slice(0,i)); setTimeout(erase,18); }
+          else { setPidx(p=>(p+1)%prompts.length); setTyping(true); }
+        };
+        erase();
+      };
+      timeout=setTimeout(tick,300);
+    }
+    return ()=>clearTimeout(timeout);
+  },[pidx,typing,value]);
+  return <input value={value} onChange={onChange} onKeyDown={onKeyDown}
+    placeholder={value?"Search teams, coaches, upsets, records…":ph||"Ask anything about the World Cup…"}
+    style={style}/>;
+}
+
 /* ===================== MATCH DETAIL MODAL ===================== */
 function MatchModal({id,onClose}){
   const [d,setD]=useState(null); const [err,setErr]=useState(null);
@@ -294,7 +381,7 @@ function Live({onOpenMatch}) {
     <H2 eyebrow="Live Feed — 2026 FIFA World Cup" title="Today's matches" right={
       <div style={{font:`600 11px ${mono}`,color:C.mute,textAlign:"right"}}><div><span className="pulse"></span> &nbsp;AUTO-REFRESH</div><div style={{marginTop:6}}>next pull in {secs}s</div></div>}/>
     {err && <Panel style={{borderColor:C.red}}><div style={{font:`600 13px ${mono}`,color:C.red}}>Feed unavailable</div><div style={{font:`13px/1.5 ${display}`,color:C.mute,marginTop:8}}>{err}. Check FOOTBALL_DATA_API_KEY in Vercel. Retrying automatically.</div></Panel>}
-    {!data && !err && <div style={{padding:40,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading feed…</div>}
+    {!data && !err && <Panel><MatchSkeleton/><MatchSkeleton/><MatchSkeleton/></Panel>}
     {data && <div>
       {data.live.length>0 && <Panel style={{marginBottom:16,borderColor:C.red}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.red,marginBottom:6}}>● IN PLAY</div>{data.live.map(m=><Row key={m.id} m={m}/>)}</Panel>}
       <Panel style={{marginBottom:16}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold,marginBottom:6}}>FINISHED TODAY</div>{data.finishedToday.length?data.finishedToday.map(m=><Row key={m.id} m={m}/>):<Empty>No matches finished yet today.</Empty>}</Panel>
@@ -1107,7 +1194,7 @@ function IntelligenceScores(){
           <div style={{display:"flex",alignItems:"center",gap:14}}>
             <div style={{font:`800 20px ${mono}`,color:i<3?C.gold:C.mute,width:28}}>#{i+1}</div>
             <div style={{font:`700 18px ${display}`,color:C.chalk,flex:1}}>{s.flag} {s.team}</div>
-            <div style={{font:`800 28px/1 ${display}`,color:i===0?C.gold:i<3?C.chalk:C.mute}}>{s.score}</div>
+            <div style={{font:`800 28px/1 ${display}`,color:i===0?C.gold:i<3?C.chalk:C.mute}}><AnimatedNumber value={s.score}/></div>
           </div>
           <div style={{height:6,background:C.pitch2,borderRadius:3,marginTop:10,overflow:"hidden"}}>
             <div style={{width:s.score+"%",height:"100%",borderRadius:3,background:i===0?`linear-gradient(90deg,${C.gold},${C.grass})`:i<3?C.gold:C.goldDim}}/>
@@ -1421,7 +1508,7 @@ function Homepage({onNavigate}){
   const today=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long"});
   useEffect(()=>{ setResults(q.length>1?D.search(q,5):[]); },[q]);
   useEffect(()=>{ fetch("/api/visit").then(r=>r.json()).then(setVisits).catch(()=>{}); },[]);
-  const pills=["Can Brazil win 2026?","Messi vs Maradona","Biggest upsets ever","Best coaches","Germany finals record","2022 final story"];
+  const pills=["Messi vs Maradona","Daily Trivia","Biggest upsets ever","Brazil titles","Germany finals record","2022 final story"];
   const scores=D.allIntelligenceScores().slice(0,3);
   const topCoach=D.COACHES_RANKED[0];
 
@@ -1444,8 +1531,8 @@ function Homepage({onNavigate}){
       <p style={{font:`16px/1.5 ${display}`,color:C.mute,margin:"12px auto 28px",maxWidth:460}}>The deepest World Cup analytics platform. Ask anything about the greatest tournament on Earth.</p>
       {/* SEARCH */}
       <div style={{maxWidth:580,margin:"0 auto",position:"relative"}}>
-        <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&results[0])onNavigate("Search");}}
-          placeholder="Search teams, coaches, upsets, records…"
+        <TypewriterInput value={q} onChange={e=>setQ(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&results[0])onNavigate("Search");}}
           style={{width:"100%",font:`500 16px ${display}`,padding:"16px 20px 16px 52px",color:C.chalk,background:C.panel,border:`2px solid ${q?C.gold:C.line}`,borderRadius:8,outline:"none"}}/>
         <span style={{position:"absolute",left:16,top:"50%",transform:"translateY(-50%)",font:"22px sans-serif"}}>⚽</span>
         {results.length>0 && <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,zIndex:10,overflow:"hidden"}}>
@@ -1457,13 +1544,15 @@ function Homepage({onNavigate}){
       </div>
       {/* Suggestion pills */}
       <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
-        {pills.map(p=><button key={p} onClick={()=>setQ(p)} style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{p}</button>)}
+        {[["Messi vs Maradona","Vs Mode"],["Daily Trivia","Trivia"],["Biggest upsets ever",null],["Brazil titles",null],["Germany finals record",null],["2022 final story","Stories"]].map(([label,nav])=>(
+          <button key={label} onClick={()=>nav?onNavigate(nav):setQ(label)} style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{label}</button>
+        ))}
       </div>
       {/* Visitor stats */}
       {visits&&visits.total>0&&<div style={{marginTop:20,font:`11px ${mono}`,color:C.mute,display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
-        <span>👁 <b style={{color:C.chalk}}>{visits.total.toLocaleString()}</b> total visits</span>
+        <span>👁 <b style={{color:C.chalk}}><AnimatedNumber value={visits.total}/></b> total visits</span>
         <span style={{color:C.line}}>·</span>
-        <span><b style={{color:C.chalk}}>{visits.today.toLocaleString()}</b> today</span>
+        <span><b style={{color:C.chalk}}><AnimatedNumber value={visits.today}/></b> today</span>
         {visits.history?.length>1&&<span style={{display:"flex",alignItems:"center",gap:4,color:C.mute}}>14-day trend <Sparkline history={visits.history}/></span>}
       </div>}
     </div>
@@ -1589,7 +1678,162 @@ function Results({onOpenMatch}){
   </div>;
 }
 
-const NAV=[["Home",null],["Live",Live],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
+/* ===================== DAILY TRIVIA ===================== */
+const TRIVIA=[
+  {q:"Which team pulled off the biggest statistical upset in 1950, defeating Brazil in front of 200,000 fans?",a:"Uruguay",opts:["Argentina","Uruguay","England","Sweden"],fact:"The 'Maracanazo' — Uruguay beat Brazil 2-1 in the deciding match at the Maracanã. It's still considered the greatest upset in football history.",year:1950},
+  {q:"Who scored the 'Goal of the Century' — 11 touches, 60 metres, past 5 players — at the 1986 World Cup?",a:"Diego Maradona",opts:["Pelé","Zico","Diego Maradona","Gary Lineker"],fact:"Maradona dribbled from his own half past 5 English players and the goalkeeper in the quarter-final. FIFA fans voted it the greatest goal in World Cup history.",year:1986},
+  {q:"Which country is the only one to have participated in every single World Cup?",a:"Brazil",opts:["Germany","Italy","Brazil","Argentina"],fact:"Brazil has appeared in all 23 World Cups (1930–2026), the only country with a 100% qualification record. They've won it 5 times.",year:null},
+  {q:"Who is the all-time leading scorer in World Cup history with 16 goals across 4 tournaments?",a:"Miroslav Klose",opts:["Ronaldo","Gerd Müller","Miroslav Klose","Just Fontaine"],fact:"Klose scored 16 goals for Germany across 2002, 2006, 2010, and 2014. He surpassed Ronaldo's record of 15 in the 2014 semi-final against Brazil.",year:null},
+  {q:"Saudi Arabia beat Argentina 2-1 in 2022. What was Argentina's approximate win probability before the match?",a:"Around 90%",opts:["Around 60%","Around 75%","Around 90%","Around 50%"],fact:"Argentina's Elo rating was ~350 points higher than Saudi Arabia's. The model gave Argentina roughly 88% probability of winning. Saudi Arabia's equalising goal came from a run of offside traps perfectly executed.",year:2022},
+  {q:"Just Fontaine set the record for most goals in a single World Cup in 1958. How many did he score?",a:"13",opts:["11","13","15","10"],fact:"Fontaine scored 13 goals for France in just 6 matches at the 1958 World Cup in Sweden. The record has stood for 68 years and is unlikely to ever be broken.",year:1958},
+  {q:"Which country hosted the first-ever FIFA World Cup in 1930?",a:"Uruguay",opts:["Brazil","Argentina","Uruguay","France"],fact:"Uruguay hosted and won the first World Cup. Only 13 teams participated — European nations largely refused to travel the long sea voyage. Uruguay beat Argentina 4-2 in the final.",year:1930},
+  {q:"Germany beat Brazil 7-1 in the 2014 semi-final on Brazilian soil. What is this game known as?",a:"The Mineirazo",opts:["The Maracanazo","The Mineirazo","Die Schwarze Nacht","Das Wunder"],fact:"The 'Mineirazo' (after Estádio Mineirão in Belo Horizonte) is the most shocking scoreline in World Cup history. Germany scored 5 goals in 18 first-half minutes.",year:2014},
+];
+function DailyTrivia(){
+  // Seed with today's date so everyone gets the same question each day
+  const todaySeed=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const idx=parseInt(todaySeed)%TRIVIA.length;
+  const q=TRIVIA[idx];
+  const [ans,setAns]=useState(null);
+  const [showFact,setShowFact]=useState(false);
+  const correct=ans===q.a;
+  return <div>
+    <H2 eyebrow="Daily Trivia" title="Test your World Cup IQ"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 20px",maxWidth:560}}>A new question every day, drawn from 90 years of World Cup history. Everyone gets the same question.</p>
+    <Panel style={{marginBottom:16}}>
+      <div style={{font:`600 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:12}}>
+        TODAY'S QUESTION{q.year?` · ${q.year} WORLD CUP`:""}
+      </div>
+      <div style={{font:`700 18px/1.4 ${display}`,color:C.chalk,marginBottom:20}}>{q.q}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+        {q.opts.map(opt=>{
+          const selected=ans===opt;
+          const isCorrect=opt===q.a;
+          const bg=ans?(isCorrect?"rgba(63,174,111,.15)":selected?"rgba(217,84,63,.15)":"transparent"):selected?"rgba(232,184,75,.1)":"transparent";
+          const border=ans?(isCorrect?C.grass:selected?C.red:C.line):selected?C.gold:C.line;
+          const col=ans?(isCorrect?C.grass:selected?C.red:C.mute):selected?C.gold:C.mute;
+          return <button key={opt} onClick={()=>{if(!ans){setAns(opt);setTimeout(()=>setShowFact(true),400);}}}
+            style={{font:`600 14px ${display}`,padding:"12px 16px",cursor:ans?"default":"pointer",borderRadius:4,
+              border:`1px solid ${border}`,background:bg,color:col,textAlign:"left",transition:"all .2s"}}>
+            {ans&&isCorrect&&"✓ "}{ans&&selected&&!isCorrect&&"✗ "}{opt}
+          </button>;
+        })}
+      </div>
+      {ans&&<div style={{padding:"14px 16px",borderRadius:4,background:correct?"rgba(63,174,111,.08)":"rgba(217,84,63,.08)",border:`1px solid ${correct?C.grass:C.red}`,marginBottom:12}}>
+        <div style={{font:`700 15px ${display}`,color:correct?C.grass:C.red,marginBottom:6}}>{correct?"🎉 Correct!":"❌ Not quite — the answer is "+q.a}</div>
+        {showFact&&<div style={{font:`13px/1.6 ${display}`,color:C.mute}}>{q.fact}</div>}
+      </div>}
+      {ans&&<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <button onClick={()=>{setAns(null);setShowFact(false);}} style={{font:`600 12px ${mono}`,padding:"8px 14px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>Try again</button>
+        <button onClick={()=>{const txt=`I just answered a World Cup Trivia question ${correct?"correctly! 🎉":"incorrectly... 😅"} Can you beat me? Try at fifa.rajeevbuilds.dev`;navigator.clipboard?.writeText(txt).catch(()=>{});}} style={{font:`600 12px ${mono}`,padding:"8px 14px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold}}>📋 Copy & Share</button>
+      </div>}
+    </Panel>
+    <Panel style={{padding:"12px 16px"}}>
+      <div style={{font:`600 10px ${mono}`,color:C.mute,marginBottom:8}}>ALL TRIVIA QUESTIONS ({TRIVIA.length} total — cycles daily)</div>
+      {TRIVIA.map((t,i)=><div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.line}`,font:`12px ${display}`,color:i===idx?C.gold:C.mute,display:"flex",gap:8}}>
+        <span style={{fontFamily:mono,flexShrink:0}}>{i===idx?"▶":"  "} {t.year||"All time"}</span>
+        <span>{t.q.slice(0,60)}…</span>
+      </div>)}
+    </Panel>
+  </div>;
+}
+
+/* ===================== VS MODE ===================== */
+function VsMode(){
+  const D=window.WCData;
+  const PLAYERS={
+    "Lionel Messi":     {country:"Argentina",flag:"🇦🇷",apps:5,matches:26,goals:13,assists:8,minutes:2314,awards:"2× Golden Ball · 2022 Champion",koGoals:7,groupGoals:6,finals:3},
+    "Diego Maradona":   {country:"Argentina",flag:"🇦🇷",apps:4,matches:21,goals:8, assists:8,minutes:1938,awards:"1986 Golden Ball · Champion",koGoals:5,groupGoals:3,finals:1},
+    "Pelé":             {country:"Brazil",   flag:"🇧🇷",apps:4,matches:14,goals:12,assists:6,minutes:1115,awards:"3× Champion (58/62/70)",koGoals:8,groupGoals:4,finals:3},
+    "Ronaldo (R9)":     {country:"Brazil",   flag:"🇧🇷",apps:3,matches:19,goals:15,assists:4,minutes:1488,awards:"2002 Champion · Golden Ball",koGoals:9,groupGoals:6,finals:2},
+    "Miroslav Klose":   {country:"Germany",  flag:"🇩🇪",apps:4,matches:24,goals:16,assists:0,minutes:1718,awards:"All-time top scorer",koGoals:8,groupGoals:8,finals:1},
+    "Kylian Mbappé":    {country:"France",   flag:"🇫🇷",apps:2,matches:14,goals:12,assists:2,minutes:1191,awards:"2018 Champion · 2022 Golden Boot",koGoals:7,groupGoals:5,finals:2},
+    "Zinedine Zidane":  {country:"France",   flag:"🇫🇷",apps:3,matches:17,goals:5, assists:6,minutes:1471,awards:"1998 Champion · 2006 Golden Ball",koGoals:4,groupGoals:1,finals:2},
+    "Ronaldo (CR7)":    {country:"Portugal", flag:"🇵🇹",apps:5,matches:22,goals:8, assists:2,minutes:1928,awards:"First to score in 5 WCs",koGoals:2,groupGoals:6,finals:0},
+  };
+  const names=Object.keys(PLAYERS);
+  const [a,setA]=useState("Lionel Messi");
+  const [b,setB]=useState("Diego Maradona");
+  const [vtab,setVtab]=useState("overview");
+  const pa=PLAYERS[a], pb=PLAYERS[b];
+  const Bar=({va,vb,label,accent})=>{
+    const max=Math.max(va,vb,1);
+    const aWins=va>vb;
+    return <div style={{marginBottom:12}}>
+      <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:6}}>{label}</div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{width:32,textAlign:"right",font:`700 15px ${display}`,color:aWins?C.gold:C.mute}}>{va}</span>
+        <div style={{flex:1,height:8,background:C.pitch2,borderRadius:4,overflow:"hidden",position:"relative"}}>
+          <div style={{position:"absolute",right:"50%",top:0,height:"100%",width:(va/max*50)+"%",background:aWins?C.gold:C.mute,borderRadius:"4px 0 0 4px",transformOrigin:"right"}}/>
+          <div style={{position:"absolute",left:"50%",top:0,height:"100%",width:(vb/max*50)+"%",background:!aWins?C.grass:C.mute,borderRadius:"0 4px 4px 0"}}/>
+          <div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:C.line}}/>
+        </div>
+        <span style={{width:32,font:`700 15px ${display}`,color:!aWins?C.grass:C.mute}}>{vb}</span>
+      </div>
+    </div>;
+  };
+  const vtabs=[["overview","Overview"],["knockout","Knockout"],["goals","Goal Timing"]];
+  return <div>
+    <H2 eyebrow="Vs Mode" title="Head-to-head comparison"/>
+    <div style={{display:"flex",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+      <Select label="Player A" value={a} onChange={v=>{setA(v);if(v===b)setB(names.find(n=>n!==v));}} options={names}/>
+      <div style={{display:"flex",alignItems:"center",font:`700 18px ${display}`,color:C.mute,paddingTop:24}}>vs</div>
+      <Select label="Player B" value={b} onChange={v=>{setB(v);if(v===a)setA(names.find(n=>n!==v));}} options={names}/>
+    </div>
+    {/* Player headers */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:16,marginBottom:16,alignItems:"center"}}>
+      <Panel style={{textAlign:"center",borderColor:C.gold}}>
+        <div style={{font:"40px sans-serif"}}>{pa.flag}</div>
+        <div style={{font:`800 18px ${display}`,color:C.chalk}}>{a}</div>
+        <div style={{font:`11px ${mono}`,color:C.gold}}>{pa.country}</div>
+      </Panel>
+      <div style={{font:`700 24px ${display}`,color:C.mute,textAlign:"center"}}>⚔️</div>
+      <Panel style={{textAlign:"center",borderColor:C.grass}}>
+        <div style={{font:"40px sans-serif"}}>{pb.flag}</div>
+        <div style={{font:`800 18px ${display}`,color:C.chalk}}>{b}</div>
+        <div style={{font:`11px ${mono}`,color:C.grass}}>{pb.country}</div>
+      </Panel>
+    </div>
+    {/* Tab switcher */}
+    <div style={{display:"flex",gap:8,marginBottom:16}}>
+      {vtabs.map(([k,l])=><button key={k} onClick={()=>setVtab(k)} style={{font:`600 12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,border:`1px solid ${vtab===k?C.gold:C.line}`,background:vtab===k?C.gold:"transparent",color:vtab===k?C.pitch:C.mute}}>{l}</button>)}
+    </div>
+    <Panel>
+      {vtab==="overview"&&<>
+        <Bar va={pa.apps}  vb={pb.apps}  label="TOURNAMENTS PLAYED"/>
+        <Bar va={pa.matches} vb={pb.matches} label="MATCHES"/>
+        <Bar va={pa.goals} vb={pb.goals} label="TOTAL GOALS"/>
+        <Bar va={pa.assists} vb={pb.assists} label="ASSISTS"/>
+        <Bar va={Math.round(pa.minutes/pa.matches)} vb={Math.round(pb.minutes/pb.matches)} label="AVG MINUTES PER GAME"/>
+        <Bar va={pa.finals} vb={pb.finals} label="FINALS REACHED"/>
+      </>}
+      {vtab==="knockout"&&<>
+        <Bar va={pa.koGoals} vb={pb.koGoals} label="KNOCKOUT STAGE GOALS"/>
+        <Bar va={pa.groupGoals} vb={pb.groupGoals} label="GROUP STAGE GOALS"/>
+        <Bar va={+(pa.koGoals/Math.max(pa.matches-pa.apps*3,1)*10).toFixed(1)} vb={+(pb.koGoals/Math.max(pb.matches-pb.apps*3,1)*10).toFixed(1)} label="KO GOALS PER 10 MATCHES"/>
+      </>}
+      {vtab==="goals"&&<>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          {[pa,pb].map((p,i)=><div key={i}>
+            <div style={{font:`700 13px ${display}`,color:i===0?C.gold:C.grass,marginBottom:8}}>{i===0?a:b}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <div style={{display:"flex",gap:8,font:`12px ${display}`,color:C.chalk}}><span style={{color:C.mute,width:80}}>Total goals</span><b>{p.goals}</b></div>
+              <div style={{display:"flex",gap:8,font:`12px ${display}`,color:C.chalk}}><span style={{color:C.mute,width:80}}>In KOs</span><b>{p.koGoals}</b></div>
+              <div style={{display:"flex",gap:8,font:`12px ${display}`,color:C.chalk}}><span style={{color:C.mute,width:80}}>In groups</span><b>{p.groupGoals}</b></div>
+              <div style={{display:"flex",gap:8,font:`12px ${display}`,color:C.chalk}}><span style={{color:C.mute,width:80}}>Per game</span><b>{(p.goals/p.matches).toFixed(2)}</b></div>
+            </div>
+          </div>)}
+        </div>
+      </>}
+      <div style={{marginTop:16,paddingTop:12,borderTop:`1px solid ${C.line}`,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{font:`11px/1.5 ${mono}`,color:C.mute,borderLeft:`2px solid ${C.gold}`,paddingLeft:8}}>{pa.awards}</div>
+        <div style={{font:`11px/1.5 ${mono}`,color:C.mute,borderLeft:`2px solid ${C.grass}`,paddingLeft:8}}>{pb.awards}</div>
+      </div>
+    </Panel>
+  </div>;
+}
+
+const NAV=[["Home",null],["Live",Live],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Vs Mode",VsMode],["Trivia",DailyTrivia],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Alerts",Alerts]];
 
 // Grouped nav: section → [tab labels]. Order matches NAV array labels exactly.
 /* ===================== FOOTER VISITS ===================== */
@@ -1608,9 +1852,9 @@ function FooterVisits(){
 
 const NAV_GROUPS=[
   {label:"LIVE",  icon:"●", tabs:["Live","Results","Standings","Scorer Race"]},
-  {label:"INTEL", icon:"◈", tabs:["Search","Teams","Scores","Coaches","Coach Ranking","Upsets","Stories","Knowledge Graph","Nation Evolution"]},
+  {label:"INTEL", icon:"◈", tabs:["Search","Vs Mode","Teams","Scores","Coaches","Coach Ranking","Upsets","Stories","Knowledge Graph","Nation Evolution"]},
   {label:"PREDICT",icon:"◎",tabs:["Qual Odds","Path to Final","Team Predictor","Golden Boot"]},
-  {label:"MORE",  icon:"⊞", tabs:["History","Alerts"]},
+  {label:"MORE",  icon:"⊞", tabs:["Trivia","History","Alerts"]},
 ];
 
 function App(){
