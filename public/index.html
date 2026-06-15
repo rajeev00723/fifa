@@ -196,6 +196,17 @@ function MatchSkeleton(){
   </div>;
 }
 
+// Inject high-contrast placeholder styles once — placeholder text must pass WCAG AA
+if(!document.getElementById("placeholder-style")){
+  const s=document.createElement("style");
+  s.id="placeholder-style";
+  s.textContent=`
+    input::placeholder { color: #b8cfc8 !important; opacity: 1; }
+    .search-hero::placeholder { color: #c8dbd5 !important; opacity: 1; }
+  `;
+  document.head.appendChild(s);
+}
+
 /** Typewriter input placeholder — cycles through questions every 4s */
 function TypewriterInput({value, onChange, onKeyDown, style={}}){
   const prompts=[
@@ -237,6 +248,7 @@ function TypewriterInput({value, onChange, onKeyDown, style={}}){
     return ()=>clearTimeout(timeout);
   },[pidx,typing,value]);
   return <input value={value} onChange={onChange} onKeyDown={onKeyDown}
+    className="search-hero"
     placeholder={value?"Search teams, coaches, upsets, records…":ph||"Ask anything about the World Cup…"}
     style={style}/>;
 }
@@ -1498,7 +1510,7 @@ function LiveStatsWidget({onNavigate}){
 }
 
 /* ===================== HOMEPAGE ===================== */
-function Homepage({onNavigate}){
+function Homepage({onNavigate, onTrivia}){
   const D=window.WCData;
   const M=window.WCModel;
   const [q,setQ]=useState("");
@@ -1544,8 +1556,12 @@ function Homepage({onNavigate}){
       </div>
       {/* Suggestion pills */}
       <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
-        {[["Messi vs Maradona","Vs Mode"],["Daily Trivia","Trivia"],["Biggest upsets ever",null],["Brazil titles",null],["Germany finals record",null],["2022 final story","Stories"]].map(([label,nav])=>(
-          <button key={label} onClick={()=>nav?onNavigate(nav):setQ(label)} style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>{label}</button>
+        {[["Messi vs Maradona","Vs Mode",null],["Daily Trivia",null,"trivia"],["Biggest upsets ever",null,null],["Brazil titles",null,null],["Germany finals record",null,null],["2022 final story","Stories",null]].map(([label,nav,action])=>(
+          <button key={label} onClick={()=>action==="trivia"?onTrivia():nav?onNavigate(nav):setQ(label)}
+            style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,
+              border:`1px solid ${action==="trivia"?C.gold:C.line}`,
+              background:action==="trivia"?"rgba(232,184,75,.08)":"transparent",
+              color:action==="trivia"?C.gold:C.mute}}>{label}</button>
         ))}
       </div>
       {/* Visitor stats */}
@@ -1571,33 +1587,45 @@ function Homepage({onNavigate}){
     {/* THREE COLUMN PANELS */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
       {/* Intelligence Scores */}
-      <Panel style={{cursor:"pointer"}} onClick={()=>onNavigate("Scores")}>
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column"}} onClick={()=>onNavigate("Scores")}>
         <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:12}}>🏆 TOP TEAMS</div>
-        {scores.map((s,i)=><div key={s.team} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.line}`}}>
-          <span style={{font:`800 14px ${mono}`,color:i===0?C.gold:C.mute,width:18}}>#{i+1}</span>
-          <span style={{font:`600 14px ${display}`,flex:1,color:C.chalk}}>{s.flag} {s.team}</span>
-          <span style={{font:`700 16px ${display}`,color:C.gold}}>{s.score}</span>
-        </div>)}
-        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>View all scores →</div>
-      </Panel>
-      {/* Top Coach */}
-      <Panel style={{cursor:"pointer"}} onClick={()=>onNavigate("Coach Ranking")}>
-        <div style={{font:`700 11px ${mono}`,color:C.grass,letterSpacing:".1em",marginBottom:12}}>🎯 TOP COACH</div>
-        <div style={{font:`800 20px/1 ${display}`,color:C.chalk,marginBottom:4}}>{topCoach.flag} {topCoach.name}</div>
-        <div style={{font:`11px ${mono}`,color:C.gold,marginBottom:12}}>{topCoach.bestFinish}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <Stat label="Win %" value={topCoach.winPct+"%"} accent={C.gold}/>
-          <Stat label="Impact" value={topCoach.impactScore} accent={C.grass}/>
+        <div style={{flex:1}}>
+          {scores.map((s,i)=><div key={s.team} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.line}`}}>
+            <span style={{font:`800 14px ${mono}`,color:i===0?C.gold:C.mute,width:18}}>#{i+1}</span>
+            <span style={{font:`600 14px ${display}`,flex:1,color:C.chalk}}>{s.flag} {s.team}</span>
+            <span style={{font:`700 16px ${display}`,color:C.gold}}><AnimatedNumber value={s.score}/></span>
+          </div>)}
         </div>
-        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:14}}>View all coaches →</div>
+        <div style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`}}>View all scores →</div>
       </Panel>
+
+      {/* Top Coach */}
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column"}} onClick={()=>onNavigate("Coach Ranking")}>
+        <div style={{font:`700 11px ${mono}`,color:C.grass,letterSpacing:".1em",marginBottom:12}}>🎯 TOP COACH</div>
+        <div style={{flex:1}}>
+          <div style={{font:`800 20px/1 ${display}`,color:C.chalk,marginBottom:4}}>{topCoach.flag} {topCoach.name}</div>
+          <div style={{font:`11px ${mono}`,color:C.gold,marginBottom:12}}>{topCoach.bestFinish}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Stat label="Win %" value={topCoach.winPct+"%"} accent={C.gold}/>
+            <Stat label={<>Impact <Info text="Coach Impact Score blends win percentage (40%), title bonuses, tournament longevity, and goals scored per game. Higher = more dominant across their World Cup career."/></>} value={topCoach.impactScore} accent={C.grass}/>
+          </div>
+        </div>
+        <div style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`}}>View all coaches →</div>
+      </Panel>
+
       {/* Greatest upset */}
-      <Panel style={{cursor:"pointer"}} onClick={()=>onNavigate("Upsets")}>
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column"}} onClick={()=>onNavigate("Upsets")}>
         <div style={{font:`700 11px ${mono}`,color:C.red,letterSpacing:".1em",marginBottom:12}}>⚡ BIGGEST UPSET</div>
-        <div style={{font:`700 16px/1.2 ${display}`,color:C.chalk,marginBottom:6}}>{D.UPSETS[0].match}</div>
-        <div style={{font:`11px ${mono}`,color:C.red,marginBottom:12}}>{D.UPSETS[0].year} · Score: {D.UPSETS[0].upsetScore}/100</div>
-        <div style={{font:`12px/1.5 ${display}`,color:C.mute}}>{D.UPSETS[0].detail.slice(0,90)}…</div>
-        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:10}}>View all upsets →</div>
+        <div style={{flex:1}}>
+          <div style={{font:`700 16px/1.2 ${display}`,color:C.chalk,marginBottom:6}}>{D.UPSETS[0].match}</div>
+          <div style={{font:`11px ${mono}`,color:C.red,marginBottom:10}}>{D.UPSETS[0].year} · Score: <Info text="Upset Score (0–100) blends the pre-match Elo rating gap (how big the favourite was), the stage of the tournament, and the margin of victory. 96/100 = one of the most statistically improbable results in World Cup history."/>{" "}{D.UPSETS[0].upsetScore}/100</div>
+          {/* Gradient fade on truncated text — CSS mask instead of hard slice */}
+          <div style={{position:"relative",maxHeight:52,overflow:"hidden"}}>
+            <div style={{font:`12px/1.6 ${display}`,color:C.mute}}>{D.UPSETS[0].detail}</div>
+            <div style={{position:"absolute",bottom:0,left:0,right:0,height:28,background:`linear-gradient(to bottom, transparent, ${C.panel})`}}/>
+          </div>
+        </div>
+        <div style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`}}>Read full story →</div>
       </Panel>
     </div>
 
@@ -1837,6 +1865,61 @@ const NAV=[["Home",null],["Live",Live],["Results",Results],["Standings",Standing
 
 // Grouped nav: section → [tab labels]. Order matches NAV array labels exactly.
 /* ===================== FOOTER VISITS ===================== */
+/* ===================== TRIVIA MODAL (overlay) ===================== */
+function TriviaModal({onClose}){
+  const todaySeed=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const q=TRIVIA[parseInt(todaySeed)%TRIVIA.length];
+  const [ans,setAns]=useState(null);
+  const [copied,setCopied]=useState(false);
+  const correct=ans===q.a;
+  const share=()=>{
+    const txt=`I just answered today's World Cup Trivia ${correct?"correctly! 🏆":"incorrectly 😅"} Can you beat me? Try at fifa.rajeevbuilds.dev`;
+    navigator.clipboard?.writeText(txt).then(()=>setCopied(true)).catch(()=>{});
+    setTimeout(()=>setCopied(false),2000);
+  };
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(4,12,9,.86)",zIndex:100,display:"grid",placeItems:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.panel,border:`1px solid ${C.gold}`,borderRadius:8,maxWidth:480,width:"100%",padding:24,animation:"slideUp .25s ease"}}>
+        <style>{`@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".12em"}}>🧠 DAILY TRIVIA{q.year?` · ${q.year}`:""}</div>
+          <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.mute,borderRadius:4,padding:"4px 10px",cursor:"pointer",fontFamily:mono,fontSize:12}}>✕</button>
+        </div>
+        <div style={{font:`700 17px/1.4 ${display}`,color:C.chalk,marginBottom:20}}>{q.q}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+          {q.opts.map((opt,i)=>{
+            const selected=ans===opt, isCorrect=opt===q.a;
+            const bg=ans?(isCorrect?"rgba(63,174,111,.15)":selected?"rgba(217,84,63,.12)":"transparent"):"transparent";
+            const border=ans?(isCorrect?C.grass:selected?C.red:C.line):C.line;
+            const col=ans?(isCorrect?C.grass:selected?C.red:C.mute):C.chalk;
+            return <button key={opt} onClick={()=>{ if(!ans) setAns(opt); }}
+              style={{font:`600 13px ${display}`,padding:"11px 14px",cursor:ans?"default":"pointer",
+                borderRadius:5,border:`1px solid ${border}`,background:bg,color:col,
+                textAlign:"left",transition:"all .18s",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{font:`700 12px ${mono}`,color:C.mute,flexShrink:0}}>{"ABCD"[i]}</span>{opt}
+              {ans&&isCorrect&&<span style={{marginLeft:"auto"}}>✓</span>}
+              {ans&&selected&&!isCorrect&&<span style={{marginLeft:"auto"}}>✗</span>}
+            </button>;
+          })}
+        </div>
+        {ans&&<div>
+          <div style={{padding:"12px 14px",borderRadius:5,background:correct?"rgba(63,174,111,.08)":"rgba(217,84,63,.08)",
+            border:`1px solid ${correct?C.grass:C.red}`,marginBottom:12}}>
+            <div style={{font:`700 14px ${display}`,color:correct?C.grass:C.red,marginBottom:6}}>{correct?"🎉 Correct!":"Not quite — "+q.a}</div>
+            <div style={{font:`12px/1.5 ${display}`,color:C.mute}}>{q.fact}</div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={share} style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold}}>
+              {copied?"✓ Copied!":"📋 Copy & Share"}
+            </button>
+            <button onClick={onClose} style={{font:`600 12px ${mono}`,padding:"9px 16px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>Close</button>
+          </div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 function FooterVisits(){
   const [v,setV]=useState(null);
   useEffect(()=>{ fetch("/api/visit").then(r=>r.json()).then(setV).catch(()=>{}); },[]);
@@ -1861,6 +1944,7 @@ function App(){
   const [tab,setTab]=useState(0);
   const [matchId,setMatchId]=useState(null);
   const [teamId,setTeamId]=useState(null);
+  const [showTrivia,setShowTrivia]=useState(false);
 
   // Theme — persisted in localStorage
   const [theme,setTheme]=useState(()=>{
@@ -1891,6 +1975,7 @@ function App(){
   return (<ThemeCtx.Provider value={theme}><div style={{minHeight:"100vh",background:C.bg,color:C.chalk,transition:"background .2s,color .2s"}}>
     <MatchModal id={matchId} onClose={()=>setMatchId(null)}/>
     <SquadModal id={teamId} onClose={()=>setTeamId(null)}/>
+    {showTrivia&&<TriviaModal onClose={()=>setShowTrivia(false)}/>}
 
     {/* HEADER */}
     <header style={{borderBottom:`1px solid ${C.line}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,background:C.navBg}}>
@@ -1919,17 +2004,16 @@ function App(){
       <div style={{display:"flex",padding:"0 16px",gap:2,borderBottom:`1px solid ${C.line}`,overflowX:"auto"}}>
         <button onClick={()=>go(0)}
           style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
-            color:tab===0?C.gold:C.mute,borderBottom:`2px solid ${tab===0?C.gold:"transparent"}`,
+            color:tab===0?C.gold:"#a0b8ac",borderBottom:`2px solid ${tab===0?C.gold:"transparent"}`,
             whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em"}}>
           HOME
         </button>
         {NAV_GROUPS.map((g,gi)=>{
           const isActive=activeSection===gi;
-          // Navigate to the first tab in this section on click
           const firstTabIdx=NAV.findIndex(([l])=>l===g.tabs[0]);
           return <button key={g.label} onClick={()=>go(firstTabIdx)}
             style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
-              color:isActive?C.gold:C.mute,borderBottom:`2px solid ${isActive?C.gold:"transparent"}`,
+              color:isActive?C.gold:"#a0b8ac",borderBottom:`2px solid ${isActive?C.gold:"transparent"}`,
               whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em",display:"flex",alignItems:"center",gap:5}}>
             <span style={{fontSize:8}}>{g.icon}</span>{g.label}
           </button>;
@@ -1942,7 +2026,7 @@ function App(){
           const active=tab===i;
           return <button key={label} onClick={()=>go(i)}
             style={{font:`500 12px ${display}`,padding:"9px 14px",cursor:"pointer",background:"none",border:"none",
-              color:active?C.chalk:C.mute,borderBottom:`2px solid ${active?C.gold:"transparent"}`,
+              color:active?C.chalk:"#a0b8ac",borderBottom:`2px solid ${active?C.gold:"transparent"}`,
               whiteSpace:"nowrap",flexShrink:0}}>
             {label}
           </button>;
@@ -1951,7 +2035,7 @@ function App(){
     </div>
 
     <main style={{maxWidth:1040,margin:"0 auto",padding:"28px 24px 80px"}}>
-      {tab===0 ? <Homepage onNavigate={navigate}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
+      {tab===0 ? <Homepage onNavigate={navigate} onTrivia={()=>setShowTrivia(true)}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
     </main>
     <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center",background:C.navBg}}>
       <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
