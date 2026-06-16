@@ -1857,7 +1857,10 @@ function Homepage({onNavigate, onTrivia}){
     {/* THREE COLUMN PANELS */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
       {/* Intelligence Scores */}
-      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column"}} onClick={()=>onNavigate("Scores")}>
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
+        onClick={()=>onNavigate("Scores")}
+        onMouseEnter={e=>e.currentTarget.style.borderColor=C.gold}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=C.line}>
         <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:12}}>🏆 TOP TEAMS</div>
         <div style={{flex:1}}>
           {scores.map((s,i)=><div key={s.team} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.line}`}}>
@@ -1866,11 +1869,14 @@ function Homepage({onNavigate, onTrivia}){
             <span style={{font:`700 16px ${display}`,color:C.gold}}><AnimatedNumber value={s.score}/></span>
           </div>)}
         </div>
-        <div style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`}}>View all scores →</div>
+        <button onClick={e=>{e.stopPropagation();onNavigate("Scores");}} style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`,background:"none",border:"none",borderTop:`1px solid ${C.line}`,cursor:"pointer",textAlign:"left",padding:"10px 0 0",width:"100%"}}>View all scores →</button>
       </Panel>
 
       {/* Top Coach */}
-      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column"}} onClick={()=>onNavigate("Coach Ranking")}>
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
+        onClick={()=>onNavigate("Coach Ranking")}
+        onMouseEnter={e=>e.currentTarget.style.borderColor=C.grass}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=C.line}>
         <div style={{font:`700 11px ${mono}`,color:C.grass,letterSpacing:".1em",marginBottom:12}}>🎯 TOP COACH</div>
         <div style={{flex:1}}>
           <div style={{font:`800 20px/1 ${display}`,color:C.chalk,marginBottom:4}}>{topCoach.flag} {topCoach.name}</div>
@@ -1880,22 +1886,24 @@ function Homepage({onNavigate, onTrivia}){
             <Stat label={<>Impact <Info text="Coach Impact Score blends win percentage (40%), title bonuses, tournament longevity, and goals scored per game. Higher = more dominant across their World Cup career."/></>} value={topCoach.impactScore} accent={C.grass}/>
           </div>
         </div>
-        <div style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`}}>View all coaches →</div>
+        <button onClick={e=>{e.stopPropagation();onNavigate("Coach Ranking");}} style={{font:`600 11px ${mono}`,color:C.gold,background:"none",border:"none",borderTop:`1px solid ${C.line}`,cursor:"pointer",textAlign:"left",padding:"10px 0 0",marginTop:14,width:"100%"}}>View all coaches →</button>
       </Panel>
 
       {/* Greatest upset */}
-      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column"}} onClick={()=>onNavigate("Upsets")}>
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
+        onClick={()=>onNavigate("Upsets")}
+        onMouseEnter={e=>e.currentTarget.style.borderColor=C.red}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=C.line}>
         <div style={{font:`700 11px ${mono}`,color:C.red,letterSpacing:".1em",marginBottom:12}}>⚡ BIGGEST UPSET</div>
         <div style={{flex:1}}>
           <div style={{font:`700 16px/1.2 ${display}`,color:C.chalk,marginBottom:6}}>{D.UPSETS[0].match}</div>
           <div style={{font:`11px ${mono}`,color:C.red,marginBottom:10}}>{D.UPSETS[0].year} · Score: <Info text="Upset Score (0–100) blends the pre-match Elo rating gap (how big the favourite was), the stage of the tournament, and the margin of victory. 96/100 = one of the most statistically improbable results in World Cup history."/>{" "}{D.UPSETS[0].upsetScore}/100</div>
-          {/* Gradient fade on truncated text — CSS mask instead of hard slice */}
           <div style={{position:"relative",maxHeight:52,overflow:"hidden"}}>
             <div style={{font:`12px/1.6 ${display}`,color:C.mute}}>{D.UPSETS[0].detail}</div>
             <div style={{position:"absolute",bottom:0,left:0,right:0,height:28,background:`linear-gradient(to bottom, transparent, ${C.panel})`}}/>
           </div>
         </div>
-        <div style={{font:`600 11px ${mono}`,color:C.gold,marginTop:14,paddingTop:10,borderTop:`1px solid ${C.line}`}}>Read full story →</div>
+        <button onClick={e=>{e.stopPropagation();onNavigate("Upsets");}} style={{font:`600 11px ${mono}`,color:C.gold,background:"none",border:"none",borderTop:`1px solid ${C.line}`,cursor:"pointer",textAlign:"left",padding:"10px 0 0",marginTop:14,width:"100%"}}>Read full story →</button>
       </Panel>
     </div>
 
@@ -1906,7 +1914,11 @@ function Homepage({onNavigate, onTrivia}){
     <StickyPredictor onNavigate={onNavigate}/>
 
     {/* STORY TEASER */}
-    {D.STORIES.greatestFinals.length>0 && <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer"}} onClick={()=>onNavigate("Stories")}>
+    {D.STORIES.greatestFinals.length>0 && <Panel
+      style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer",transition:"background .15s"}}
+      onClick={()=>onNavigate("Stories")}
+      onMouseEnter={e=>e.currentTarget.style.background="rgba(232,184,75,.08)"}
+      onMouseLeave={e=>e.currentTarget.style.background="rgba(232,184,75,.04)"}>
       <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:10}}>📖 STORY OF THE TOURNAMENT</div>
       <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk,marginBottom:6}}>{D.STORIES.greatestFinals[3]?.icon||D.STORIES.greatestFinals[0].icon} {D.STORIES.greatestFinals[3]?.title||D.STORIES.greatestFinals[0].title}</div>
       <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).year} · {(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).subtitle}</div>
@@ -1914,7 +1926,7 @@ function Homepage({onNavigate, onTrivia}){
         <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).story}</div>
         <div style={{position:"absolute",bottom:0,left:0,right:0,height:32,background:`linear-gradient(transparent,${C.panel})`}}/>
       </div>
-      <div style={{font:`12px ${mono}`,color:C.gold,marginTop:12}}>Read all stories →</div>
+      <button onClick={e=>{e.stopPropagation();onNavigate("Stories");}} style={{font:`600 12px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:"12px 0 0",marginTop:0,textAlign:"left"}}>Read all stories →</button>
     </Panel>}
   </div>;
 }
