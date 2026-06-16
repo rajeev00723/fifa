@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>World Cup Intelligence Hub</title>
+<title>Live 2026 World Cup Analytics &amp; Elo Predictions | Intelligence Hub</title>
+<meta name="description" content="Real-time 2026 FIFA World Cup stats, live scores, Elo-based match predictions, Golden Boot tracker, group standings and historical data from 1930."/>
+<meta property="og:title" content="World Cup Intelligence Hub — Live 2026 Analytics"/>
+<meta property="og:url" content="https://fifa.rajeevbuilds.dev"/>
+<meta property="og:type" content="website"/>
+<link rel="canonical" href="https://fifa.rajeevbuilds.dev"/>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"World Cup Intelligence Hub","url":"https://fifa.rajeevbuilds.dev","description":"Live 2026 FIFA World Cup analytics, Elo predictions and historical stats from 1930."}</script>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -422,38 +428,68 @@ function Live({onOpenMatch}) {
 function ScorerRace(){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
   const [statTab,setStatTab]=useState("goals");
+  const [expanded,setExpanded]=useState(null);
+  const RECORDS={goals:{all:16,player:"Miroslav Klose",single:13},assists:{all:8,player:"Various",single:8},penalties:{all:4,player:"Various",single:3}};
   useEffect(()=>{ fetch("/api/scorers").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
-  const tabs=[["goals","⚽ Goals"],["assists","🎯 Assists"],["penalties","🎯 Pens"]];
+  const tabs=[["goals","Goals"],["assists","Assists"],["penalties","Pens"]];
   const rows=(data?.scorers||[])
     .filter(s=>(s[statTab]||0)>0)
     .sort((a,b)=>(b[statTab]||0)-(a[statTab]||0))
     .slice(0,15);
   const max=rows[0]?.[statTab]||1;
+  const rec=RECORDS[statTab];
   return (<div>
     <H2 eyebrow="Live — Golden Boot Race" title="Top scorers, this tournament"/>
     <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
-      {tabs.map(([k,l])=><button key={k} onClick={()=>setStatTab(k)} style={{font:`600 12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,border:`1px solid ${statTab===k?C.gold:C.line}`,background:statTab===k?C.gold:"transparent",color:statTab===k?C.pitch:C.mute}}>{l}</button>)}
+      {tabs.map(([k,l])=><button key={k} onClick={()=>{setStatTab(k);setExpanded(null);}}
+        style={{font:`600 12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,
+          border:"none",background:statTab===k?C.gold:"transparent",
+          outline:statTab===k?"none":`1px solid ${C.line}`,
+          color:statTab===k?C.pitch:"#a0b8ac"}}>{l}</button>)}
     </div>
     {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Scorers unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
     {data && rows.length===0 && <Empty>No data yet for this stat — check back once more matches are played.</Empty>}
     {rows.length>0 && <Panel>
-      {rows.map((s,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 0",borderBottom:`1px solid ${C.line}`}}>
-          <span style={{font:`800 15px ${mono}`,color:i===0?C.gold:i<3?C.chalk:C.mute,width:24,textAlign:"right",flexShrink:0}}>{i+1}</span>
-          <Avatar name={s.player} team={s.team} size={42}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{font:`700 15px ${display}`,color:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.player}</div>
-            <div style={{font:`11px ${mono}`,color:C.mute,marginTop:3}}>{s.team}</div>
+      {rows.map((s,i)=>{
+        const isOpen=expanded===s.player;
+        const val=s[statTab]||0;
+        const pctRecord=Math.min(100,Math.round(val/rec.all*100));
+        return <div key={i}>
+          <div onClick={()=>setExpanded(isOpen?null:s.player)}
+            style={{display:"flex",alignItems:"center",gap:14,padding:"12px 0",
+              borderBottom:`1px solid ${C.line}`,cursor:"pointer",
+              background:isOpen?"rgba(232,184,75,.04)":"transparent",transition:"background .15s"}}>
+            <span style={{font:`800 15px ${mono}`,color:i===0?C.gold:i<3?C.chalk:C.mute,width:24,textAlign:"right",flexShrink:0}}>{i+1}</span>
+            <Avatar name={s.player} team={s.team} size={42}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{font:`700 15px ${display}`,color:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.player}</div>
+              <div style={{font:`11px ${mono}`,color:C.mute,marginTop:3}}>{s.team}</div>
+            </div>
+            <div style={{width:100,height:6,background:C.pitch2,borderRadius:3,overflow:"hidden",flexShrink:0}}>
+              <div style={{width:(val/max*100)+"%",height:"100%",borderRadius:3,background:i===0?C.gold:i<3?C.goldDim:C.line}}/>
+            </div>
+            <span style={{font:`900 20px/1 ${display}`,color:i===0?C.gold:i<3?C.chalk:C.mute,minWidth:24,textAlign:"right",flexShrink:0}}>{val}</span>
+            <span style={{font:`10px ${mono}`,color:C.mute,flexShrink:0}}>{isOpen?"▲":"▼"}</span>
           </div>
-          <div style={{width:120,height:6,background:C.pitch2,borderRadius:3,overflow:"hidden",flexShrink:0}}>
-            <div style={{width:((s[statTab]||0)/max*100)+"%",height:"100%",borderRadius:3,background:i===0?C.gold:i<3?C.goldDim:C.line}}/>
-          </div>
-          <span style={{font:`900 22px/1 ${display}`,color:i===0?C.gold:i<3?C.chalk:C.mute,minWidth:28,textAlign:"right",flexShrink:0}}>{s[statTab]||0}</span>
-        </div>
-      ))}
+          {isOpen&&<div style={{padding:"12px 14px 16px 80px",background:"rgba(232,184,75,.03)",borderBottom:`1px solid ${C.line}`}}>
+            <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>PROGRESS TO ALL-TIME RECORD</div>
+            <div style={{height:8,background:C.pitch2,borderRadius:4,overflow:"hidden",marginBottom:6}}>
+              <div style={{width:pctRecord+"%",height:"100%",background:pctRecord>75?C.gold:C.grass,borderRadius:4}}/>
+            </div>
+            <div style={{font:`11px ${mono}`,color:C.mute,marginBottom:12}}>
+              <b style={{color:C.chalk}}>{val}</b> of {rec.all} all-time record ({rec.player}) — {pctRecord}%
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,textAlign:"center"}}>
+              <div><div style={{font:`700 20px ${display}`,color:C.gold}}>{val}</div><div style={{font:`9px ${mono}`,color:C.mute,marginTop:3}}>This WC</div></div>
+              <div><div style={{font:`700 20px ${display}`,color:C.chalk}}>{rec.single}</div><div style={{font:`9px ${mono}`,color:C.mute,marginTop:3}}>Single WC record</div></div>
+              <div><div style={{font:`700 20px ${display}`,color:rec.all-val<=3?C.red:C.mute}}>{Math.max(0,rec.all-val)}</div><div style={{font:`9px ${mono}`,color:C.mute,marginTop:3}}>To beat all-time</div></div>
+            </div>
+          </div>}
+        </div>;
+      })}
       <div style={{font:`11px ${mono}`,color:C.mute,marginTop:14,paddingTop:12,borderTop:`1px solid ${C.line}`}}>
-        Live from your feed · cached server-side · upgrades as goals go in
+        Click any player to see their progress toward World Cup records.
       </div>
     </Panel>}
   </div>);
@@ -1446,6 +1482,76 @@ function NationEvolution(){
 }
 
 /* ===================== HERO HOMEPAGE ===================== */
+/* ===================== STICKY PREDICTOR WIDGET ===================== */
+function StickyPredictor({onNavigate}){
+  const M=window.WCModel;
+  const [data,setData]=useState(null);
+  const [votes,setVotes]=useState({});
+  useEffect(()=>{
+    fetch("/api/live").then(r=>r.json()).then(setData).catch(()=>{});
+    try{const v=localStorage.getItem("wc-predictor-votes");if(v)setVotes(JSON.parse(v));}catch{}
+  },[]);
+  const vote=(key,choice)=>{
+    const next={...votes,[key]:choice};
+    setVotes(next);
+    try{localStorage.setItem("wc-predictor-votes",JSON.stringify(next));}catch{}
+  };
+  if(!data||!data.upcomingToday||data.upcomingToday.length===0) return null;
+  const upcoming=data.upcomingToday.slice(0,2);
+  return <Panel style={{marginBottom:20,borderColor:C.goldDim,background:"rgba(232,184,75,.03)"}}>
+    <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:14}}>AI PREDICTOR vs YOU</div>
+    {upcoming.map(m=>{
+      const key=`${m.home.name}v${m.away.name}`;
+      const {winA,winB}=M.matchOutcome(m.home.name,m.away.name);
+      const aiPick=winA>winB?m.home.name:winB>winA?m.away.name:"Draw";
+      const aiPct=Math.round(Math.max(winA,winB)*100);
+      const myVote=votes[key];
+      const total=Math.max(1,Object.values(votes).length);
+      const agreeCount=Object.values(votes).filter(v=>v==="agree").length;
+      const upsetCount=Object.values(votes).filter(v=>v==="upset").length;
+      return <div key={key} style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${C.line}`}}>
+        <div style={{font:`600 14px/1.3 ${display}`,color:C.chalk,marginBottom:6}}>
+          {m.home.name} vs {m.away.name}
+          <span style={{font:`11px ${mono}`,color:C.mute,marginLeft:8}}>{localTime(m.utcKickoff)}</span>
+        </div>
+        <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>
+          AI picks <b style={{color:C.chalk}}>{aiPick}</b> with {aiPct}% confidence
+          <Info text={`Win probability from Elo ratings. ${m.home.name} rated ${M.rating(m.home.name)}, ${m.away.name} rated ${M.rating(m.away.name)}. A 100-point gap = ~64% win chance for the stronger side.`}/>
+        </div>
+        {!myVote
+          ?<div style={{display:"flex",gap:8}}>
+            <button onClick={()=>vote(key,"agree")}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(63,174,111,.12)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.grass}`,background:"transparent",color:C.grass,transition:"background .15s"}}>
+              Agree with AI
+            </button>
+            <button onClick={()=>vote(key,"upset")}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(217,84,63,.12)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.red}`,background:"transparent",color:C.red,transition:"background .15s"}}>
+              Predict Upset
+            </button>
+          </div>
+          :<div>
+            <div style={{font:`11px ${mono}`,color:myVote==="agree"?C.grass:C.red,marginBottom:8}}>
+              You picked: {myVote==="agree"?"Agree with AI":"Predict Upset"}
+            </div>
+            <div style={{height:6,background:C.pitch2,borderRadius:3,overflow:"hidden",marginBottom:4}}>
+              <div style={{width:(agreeCount/total*100)+"%",height:"100%",background:C.grass,borderRadius:3}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",font:`10px ${mono}`,color:C.mute}}>
+              <span style={{color:C.grass}}>{Math.round(agreeCount/total*100)}% agree with AI</span>
+              <span style={{color:C.red}}>{Math.round(upsetCount/total*100)}% predict upset</span>
+            </div>
+          </div>
+        }
+      </div>;
+    })}
+    <button onClick={()=>onNavigate("Team Predictor")} style={{font:`11px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:0}}>View full match predictor</button>
+  </Panel>;
+}
+
 /* ===================== LIVE STATS WIDGET (homepage) ===================== */
 // Team colours for avatar backgrounds — keyed to common nationalities in the feed.
 const TEAM_COLOURS = {
@@ -1575,10 +1681,13 @@ function Homepage({onNavigate, onTrivia}){
       <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
         {[["Messi vs Maradona","Vs Mode",null],["Daily Trivia",null,"trivia"],["Biggest upsets ever",null,null],["Brazil titles",null,null],["Germany finals record",null,null],["2022 final story","Stories",null]].map(([label,nav,action])=>(
           <button key={label} onClick={()=>action==="trivia"?onTrivia():nav?onNavigate(nav):setQ(label)}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(232,184,75,.12)";e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.color=C.chalk;}}
+            onMouseLeave={e=>{e.currentTarget.style.background=action==="trivia"?"rgba(232,184,75,.08)":"transparent";e.currentTarget.style.borderColor=action==="trivia"?C.gold:C.line;e.currentTarget.style.color=action==="trivia"?C.gold:C.mute;}}
             style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,
               border:`1px solid ${action==="trivia"?C.gold:C.line}`,
               background:action==="trivia"?"rgba(232,184,75,.08)":"transparent",
-              color:action==="trivia"?C.gold:C.mute}}>{label}</button>
+              color:action==="trivia"?C.gold:C.mute,
+              transition:"background .15s,border-color .15s,color .15s"}}>{label}</button>
         ))}
       </div>
       {/* Visitor stats */}
@@ -1649,12 +1758,18 @@ function Homepage({onNavigate, onTrivia}){
     {/* LIVE PLAYER STATS WIDGET */}
     <LiveStatsWidget onNavigate={onNavigate}/>
 
+    {/* AI PREDICTOR WIDGET */}
+    <StickyPredictor onNavigate={onNavigate}/>
+
     {/* STORY TEASER */}
     {D.STORIES.greatestFinals.length>0 && <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,cursor:"pointer"}} onClick={()=>onNavigate("Stories")}>
       <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:10}}>📖 STORY OF THE TOURNAMENT</div>
       <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk,marginBottom:6}}>{D.STORIES.greatestFinals[3]?.icon||D.STORIES.greatestFinals[0].icon} {D.STORIES.greatestFinals[3]?.title||D.STORIES.greatestFinals[0].title}</div>
       <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).year} · {(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).subtitle}</div>
-      <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).story.slice(0,180)}…</div>
+      <div style={{position:"relative",maxHeight:70,overflow:"hidden",marginBottom:4}}>
+        <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{(D.STORIES.greatestFinals[3]||D.STORIES.greatestFinals[0]).story}</div>
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:32,background:`linear-gradient(transparent,${C.panel})`}}/>
+      </div>
       <div style={{font:`12px ${mono}`,color:C.gold,marginTop:12}}>Read all stories →</div>
     </Panel>}
   </div>;
