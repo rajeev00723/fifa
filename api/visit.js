@@ -43,7 +43,7 @@ async function getStats() {
 }
 
 // ── NEWS FEED ─────────────────────────────────────────────────────────────────
-// Decode HTML entities so RSS text displays cleanly (no &lt;a href=... artifacts)
+// Decode HTML entities so RSS text displays cleanly
 function decodeEntities(str) {
   return str
     .replace(/&amp;/g,  "&")
@@ -52,9 +52,22 @@ function decodeEntities(str) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g,  "'")
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#(\d+);/g,   (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .trim();
+}
+
+// Clean raw RSS field content into plain readable text
+// Order matters: decode entities FIRST (so &lt;a becomes <a), THEN strip HTML tags
+function cleanText(raw, maxLen = 200) {
+  return decodeEntities(raw)   // 1. decode &lt; &amp; etc → real chars
+    .replace(/<[^>]*>/g, " ") // 2. strip any resulting HTML tags
+    .replace(/\s+/g, " ")     // 3. collapse whitespace
+    .replace(/\[.*?\]/g, "")  // 4. remove [bracketed link text] (Google News artifact)
+    .replace(/\bRead\s*(more|→|&rarr;|\u2192)?\b\s*$/i, "") // 5. strip trailing "Read →"
+    .replace(/\d+[mh]\s*ago\s*$/i, "")  // 6. strip trailing "56m ago" timestamps
+    .trim()
+    .slice(0, maxLen);
 }
 
 function parseRSS(xml) {
@@ -63,26 +76,37 @@ function parseRSS(xml) {
   let m;
   while ((m = itemRegex.exec(xml)) !== null) {
     const block = m[1];
+
+    // Extract raw field — handles both CDATA and plain text variants
     const get = (tag) => {
-      const r = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`);
+      const r = new RegExp(
+        `<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>` +
+        `|<${tag}[^>]*>([^<]*)<\\/${tag}>`
+      );
       const match = r.exec(block);
       return match ? (match[1] || match[2] || "").trim() : "";
     };
-    // Strip HTML tags first, then decode entities for clean readable text
-    const clean = (raw) => decodeEntities(raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
-    const title = clean(get("title"));
+
+    const title = cleanText(get("title"), 120);
     const link  = get("link") || block.match(/<link>([^<]+)<\/link>/)?.[1] || "";
-    const desc  = clean(get("description")).slice(0, 180);
+    const rawDesc = get("description");
+
+    // Google News descriptions are HTML link lists — useless as text.
+    // Detect and discard them; show title-only cards instead.
+    const isHtmlDesc = rawDesc.includes("<a ") || rawDesc.includes("&lt;a ") || rawDesc.includes("<ul") || rawDesc.includes("<li");
+    const desc = isHtmlDesc ? "" : cleanText(rawDesc, 180);
+
     const pub   = get("pubDate");
     const img   = block.match(/url="([^"]+\.(jpg|jpeg|png|webp)[^"]*)"/i)?.[1] || null;
-    const src   = decodeEntities(get("source") || "");
+    const src   = cleanText(get("source") || "", 60);
+
     if (title && link) items.push({ title, link, desc, pub, img, src });
   }
   return items;
 }
 
 async function fetchNews() {
-  const cacheKey = "wc:news:feed";
+  const cacheKey = "wc:news:feed:v2"; // v2 = HTML entity fix
   const cached = await cacheGet(cacheKey).catch(() => null);
   if (cached) {
     try { return JSON.parse(cached?.value ?? cached); } catch {}
