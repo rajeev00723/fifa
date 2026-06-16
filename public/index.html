@@ -29,6 +29,11 @@
   @keyframes p { 0%,100%{opacity:1;} 50%{opacity:.3;} }
   ::-webkit-scrollbar{height:8px;width:8px;} ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
   .est { font:600 9px var(--mono); letter-spacing:.1em; color:var(--pitch); background:var(--gold); padding:2px 6px; border-radius:3px; }
+  @keyframes confettiFall { 0%{transform:translateY(0) rotate(0deg);opacity:1;} 100%{transform:translateY(50px) rotate(720deg);opacity:0;} }
+  @keyframes badgeIn { 0%{opacity:0;transform:translateY(-8px) scale(.9);} 60%{opacity:1;transform:translateY(2px) scale(1.04);} 100%{opacity:1;transform:translateY(0) scale(1);} }
+  @keyframes fadeSlideOut { 0%{opacity:1;transform:translateY(0);} 100%{opacity:0;transform:translateY(-10px);} }
+  .pred-badge { animation:badgeIn .35s ease forwards; }
+  .pred-badge-exit { animation:fadeSlideOut .3s ease forwards; }
 </style>
 </head>
 <body>
@@ -106,35 +111,52 @@ const tip = {contentStyle:{background:C.pitch,border:`1px solid ${C.line}`,fontF
  */
 function Info({text, label}){
   const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  // Position-aware: flip below if too close to top of viewport
+  const [flipDown,setFlipDown]=useState(false);
+  const handleOpen=()=>{
+    if(ref.current){
+      const rect=ref.current.getBoundingClientRect();
+      setFlipDown(rect.top<160);
+    }
+    setOpen(true);
+  };
   return (
-    <span style={{position:"relative",display:"inline-flex",alignItems:"center",gap:4,verticalAlign:"middle"}}>
+    <span ref={ref} style={{position:"relative",display:"inline-flex",alignItems:"center",gap:4,verticalAlign:"middle"}}>
       {label&&<span style={{font:`inherit`}}>{label}</span>}
       <button
-        onClick={e=>{e.stopPropagation();setOpen(o=>!o);}}
-        onMouseEnter={()=>setOpen(true)}
+        onClick={e=>{e.stopPropagation();open?setOpen(false):handleOpen();}}
+        onMouseEnter={handleOpen}
         onMouseLeave={()=>setOpen(false)}
         aria-label="More information"
         style={{background:"none",border:"none",cursor:"pointer",padding:"0 2px",display:"inline-flex",alignItems:"center",lineHeight:1}}>
         <span style={{
           display:"inline-flex",alignItems:"center",justifyContent:"center",
-          width:14,height:14,borderRadius:"50%",
-          border:`1px solid ${C.mute}`,
-          font:`600 9px/1 ${mono}`,color:C.mute,flexShrink:0,
-          transition:"border-color 120ms, color 120ms",
+          width:15,height:15,borderRadius:"50%",
+          border:`1px solid ${open?C.gold:C.mute}`,
+          font:`700 9px/1 ${mono}`,color:open?C.gold:C.mute,flexShrink:0,
+          transition:"border-color 120ms,color 120ms",
         }}>i</span>
       </button>
       {open&&<div role="tooltip" style={{
-        position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",
-        background:C.pitch2,border:`1px solid ${C.line}`,borderRadius:5,
-        padding:"8px 12px",width:220,zIndex:100,
-        font:`12px/1.5 ${display}`,color:C.chalk,
-        boxShadow:"0 4px 16px rgba(0,0,0,.5)",pointerEvents:"none",
+        position:"absolute",
+        ...(flipDown
+          ? {top:"calc(100% + 6px)",bottom:"auto"}
+          : {bottom:"calc(100% + 6px)",top:"auto"}),
+        left:"50%",transform:"translateX(-50%)",
+        background:C.pitch2,border:`1px solid ${C.gold}`,borderRadius:6,
+        padding:"10px 13px",width:240,zIndex:200,
+        font:`12px/1.6 ${display}`,color:C.chalk,
+        boxShadow:"0 8px 24px rgba(0,0,0,.6)",pointerEvents:"none",
       }}>
+        <div style={{font:`600 10px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:5}}>HOW IT WORKS</div>
         {text}
-        {/* little arrow */}
-        <span style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",
-          width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent",
-          borderTop:`6px solid ${C.line}`}}/>
+        <span style={{position:"absolute",
+          ...(flipDown
+            ? {bottom:"100%",borderBottom:`6px solid ${C.gold}`,borderTop:"none",top:"auto"}
+            : {top:"100%",borderTop:`6px solid ${C.gold}`,borderBottom:"none",bottom:"auto"}),
+          left:"50%",transform:"translateX(-50%)",
+          width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent"}}/>
       </div>}
     </span>
   );
@@ -1486,56 +1508,176 @@ function NationEvolution(){
 function StickyPredictor({onNavigate}){
   const M=window.WCModel;
   const [data,setData]=useState(null);
+  // votes: { matchKey: { choice:"agree"|"upset", aiPick:string, lockedAt:ISO, result?:"correct"|"wrong"|"pending" } }
   const [votes,setVotes]=useState({});
+  const [flash,setFlash]=useState(null); // matchKey currently showing badge
+
   useEffect(()=>{
-    fetch("/api/live").then(r=>r.json()).then(setData).catch(()=>{});
-    try{const v=localStorage.getItem("wc-predictor-votes");if(v)setVotes(JSON.parse(v));}catch{}
+    fetch("/api/live").then(r=>r.json()).then(d=>{
+      setData(d);
+      // Check finished matches against stored predictions
+      const stored=JSON.parse(localStorage.getItem("wc-predictor-votes")||"{}");
+      let updated=false;
+      (d.finishedToday||[]).forEach(m=>{
+        const key=`${m.home.name}v${m.away.name}`;
+        const v=stored[key];
+        if(v&&v.result==="pending"){
+          // Determine actual result
+          const hs=m.home.score??0, as=m.away.score??0;
+          const actualWinner=hs>as?m.home.name:as>hs?m.away.name:"Draw";
+          const aiWasRight=actualWinner===v.aiPick||(actualWinner==="Draw"&&v.aiPick==="Draw");
+          // User correct if: agreed with AI and AI was right, OR predicted upset and AI was wrong
+          const userCorrect=(v.choice==="agree"&&aiWasRight)||(v.choice==="upset"&&!aiWasRight);
+          stored[key]={...v,result:userCorrect?"correct":"wrong",actualWinner,score:`${hs}–${as}`};
+          updated=true;
+        }
+      });
+      if(updated){
+        localStorage.setItem("wc-predictor-votes",JSON.stringify(stored));
+        setVotes(stored);
+      } else {
+        setVotes(stored);
+      }
+    }).catch(()=>{
+      try{setVotes(JSON.parse(localStorage.getItem("wc-predictor-votes")||"{}"));}catch{}
+    });
   },[]);
-  const vote=(key,choice)=>{
-    const next={...votes,[key]:choice};
+
+  const vote=(key,choice,aiPick)=>{
+    const entry={choice,aiPick,lockedAt:new Date().toISOString(),result:"pending"};
+    const next={...votes,[key]:entry};
     setVotes(next);
     try{localStorage.setItem("wc-predictor-votes",JSON.stringify(next));}catch{}
+    // Show badge then fade
+    setFlash(key);
+    setTimeout(()=>setFlash(null),3500);
   };
-  if(!data||!data.upcomingToday||data.upcomingToday.length===0) return null;
-  const upcoming=data.upcomingToday.slice(0,2);
+
+  // Mini confetti burst — pure CSS, rendered as absolute dots
+  const Confetti=({active})=>{
+    if(!active) return null;
+    const dots=["#e8b84b","#3fae6f","#eef3ee","#d9543f","#74acdf"];
+    return <div style={{position:"absolute",top:0,left:"50%",pointerEvents:"none",zIndex:50}}>
+      {dots.map((color,i)=>(
+        <div key={i} style={{
+          position:"absolute",width:6,height:6,borderRadius:"50%",background:color,
+          left:(i-2)*14+"px",top:0,
+          animation:`confettiFall ${0.6+i*0.12}s ease forwards`,
+          animationDelay:(i*0.06)+"s",
+        }}/>
+      ))}
+    </div>;
+  };
+
+  // Score summary for resolved predictions
+  const allVotes=Object.values(votes);
+  const correct=allVotes.filter(v=>v.result==="correct").length;
+  const wrong=allVotes.filter(v=>v.result==="wrong").length;
+  const pending=allVotes.filter(v=>v.result==="pending").length;
+
+  // What to show: upcoming + any with pending/resolved predictions from finished matches
+  const upcoming=(data?.upcomingToday||[]).slice(0,2);
+  const resolvedKeys=Object.keys(votes).filter(k=>votes[k].result!=="pending");
+  const resolvedToShow=resolvedKeys.slice(-2); // last 2 resolved
+
+  if(!data&&Object.keys(votes).length===0) return null;
+  if(upcoming.length===0&&resolvedToShow.length===0) return null;
+
   return <Panel style={{marginBottom:20,borderColor:C.goldDim,background:"rgba(232,184,75,.03)"}}>
-    <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:14}}>AI PREDICTOR vs YOU</div>
+    {/* Header with running score */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+      <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em"}}>
+        AI PREDICTOR vs YOU
+        <Info text="Vote before each match kicks off. After full time, we check if your prediction was correct. Your score is saved on this device."/>
+      </div>
+      {(correct+wrong)>0&&<div style={{display:"flex",gap:10,font:`11px ${mono}`}}>
+        <span style={{color:C.grass}}>Correct: <b>{correct}</b></span>
+        <span style={{color:C.red}}>Wrong: <b>{wrong}</b></span>
+        {pending>0&&<span style={{color:C.mute}}>Pending: <b>{pending}</b></span>}
+      </div>}
+    </div>
+
+    {/* Resolved predictions */}
+    {resolvedToShow.map(key=>{
+      const v=votes[key];
+      const isCorrect=v.result==="correct";
+      const [home,away]=key.replace("v"," vs ").split(" vs ");
+      return <div key={key} style={{marginBottom:12,padding:"10px 12px",borderRadius:4,
+        background:isCorrect?"rgba(63,174,111,.08)":"rgba(217,84,63,.08)",
+        border:`1px solid ${isCorrect?C.grass:C.red}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{font:`700 14px ${display}`,color:isCorrect?C.grass:C.red}}>
+            {isCorrect?"✓":"✗"}
+          </span>
+          <span style={{font:`600 13px ${display}`,color:C.chalk}}>{key.replace("v"," vs ")}</span>
+          {v.score&&<span style={{font:`700 13px ${mono}`,color:C.gold}}>{v.score}</span>}
+        </div>
+        <div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>
+          You: {v.choice==="agree"?"Agreed with AI":"Predicted upset"} · AI picked {v.aiPick} ·
+          {isCorrect?" Your prediction was correct!": " AI was right this time"}
+        </div>
+      </div>;
+    })}
+
+    {/* Upcoming matches to predict */}
     {upcoming.map(m=>{
       const key=`${m.home.name}v${m.away.name}`;
       const {winA,winB}=M.matchOutcome(m.home.name,m.away.name);
       const aiPick=winA>winB?m.home.name:winB>winA?m.away.name:"Draw";
       const aiPct=Math.round(Math.max(winA,winB)*100);
       const myVote=votes[key];
-      const total=Math.max(1,Object.values(votes).length);
-      const agreeCount=Object.values(votes).filter(v=>v==="agree").length;
-      const upsetCount=Object.values(votes).filter(v=>v==="upset").length;
-      return <div key={key} style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${C.line}`}}>
-        <div style={{font:`600 14px/1.3 ${display}`,color:C.chalk,marginBottom:6}}>
+      const agreeCount=Object.values(votes).filter(v=>v.choice==="agree").length;
+      const upsetCount=Object.values(votes).filter(v=>v.choice==="upset").length;
+      const total=Math.max(1,agreeCount+upsetCount);
+      const isFlashing=flash===key;
+
+      return <div key={key} style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${C.line}`,position:"relative"}}>
+        <Confetti active={isFlashing}/>
+        <div style={{font:`600 14px/1.3 ${display}`,color:C.chalk,marginBottom:4}}>
           {m.home.name} vs {m.away.name}
           <span style={{font:`11px ${mono}`,color:C.mute,marginLeft:8}}>{localTime(m.utcKickoff)}</span>
         </div>
         <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>
-          AI picks <b style={{color:C.chalk}}>{aiPick}</b> with {aiPct}% confidence
-          <Info text={`Win probability from Elo ratings. ${m.home.name} rated ${M.rating(m.home.name)}, ${m.away.name} rated ${M.rating(m.away.name)}. A 100-point gap = ~64% win chance for the stronger side.`}/>
+          AI picks <b style={{color:C.chalk}}>{aiPick}</b> — {aiPct}% confidence
+          <Info text={`Elo model: ${m.home.name} rated ${M.rating(m.home.name)}, ${m.away.name} rated ${M.rating(m.away.name)}. Win probability uses the logistic formula: 1/(1+10^(ΔElo/400)). A 200-point gap gives ~76% win probability to the stronger team.`}/>
         </div>
+
+        {/* Vote confirmation badge */}
+        {isFlashing&&<div className="pred-badge" style={{
+          padding:"10px 14px",borderRadius:5,marginBottom:10,
+          background:myVote?.choice==="upset"?"rgba(217,84,63,.12)":"rgba(63,174,111,.12)",
+          border:`1px solid ${myVote?.choice==="upset"?C.red:C.grass}`,
+        }}>
+          <div style={{font:`600 13px ${display}`,color:myVote?.choice==="upset"?C.red:C.grass,marginBottom:3}}>
+            {myVote?.choice==="upset"?"Upset prediction locked in!":"AI prediction confirmed!"}
+          </div>
+          <div style={{font:`11px ${mono}`,color:C.mute}}>
+            {myVote?.choice==="upset"
+              ?"Check back after the match to see if you beat the AI."
+              :"Check back after the match to see if you and the AI were right."}
+          </div>
+        </div>}
+
         {!myVote
           ?<div style={{display:"flex",gap:8}}>
-            <button onClick={()=>vote(key,"agree")}
+            <button onClick={()=>vote(key,"agree",aiPick)}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(63,174,111,.12)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.grass}`,background:"transparent",color:C.grass,transition:"background .15s"}}>
+              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,
+                border:`1px solid ${C.grass}`,background:"transparent",color:C.grass,transition:"background .15s"}}>
               Agree with AI
             </button>
-            <button onClick={()=>vote(key,"upset")}
+            <button onClick={()=>vote(key,"upset",aiPick)}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(217,84,63,.12)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.red}`,background:"transparent",color:C.red,transition:"background .15s"}}>
+              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,
+                border:`1px solid ${C.red}`,background:"transparent",color:C.red,transition:"background .15s"}}>
               Predict Upset
             </button>
           </div>
-          :<div>
-            <div style={{font:`11px ${mono}`,color:myVote==="agree"?C.grass:C.red,marginBottom:8}}>
-              You picked: {myVote==="agree"?"Agree with AI":"Predict Upset"}
+          :!isFlashing&&<div>
+            <div style={{font:`11px ${mono}`,color:myVote.choice==="agree"?C.grass:C.red,marginBottom:8}}>
+              {myVote.choice==="agree"?"Agreed with AI":"Predicted upset"} — result after kick-off
             </div>
             <div style={{height:6,background:C.pitch2,borderRadius:3,overflow:"hidden",marginBottom:4}}>
               <div style={{width:(agreeCount/total*100)+"%",height:"100%",background:C.grass,borderRadius:3}}/>
@@ -1548,7 +1690,9 @@ function StickyPredictor({onNavigate}){
         }
       </div>;
     })}
-    <button onClick={()=>onNavigate("Team Predictor")} style={{font:`11px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:0}}>View full match predictor</button>
+    <button onClick={()=>onNavigate("Team Predictor")} style={{font:`11px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:0}}>
+      View full Elo match predictor
+    </button>
   </Panel>;
 }
 
