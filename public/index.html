@@ -1907,11 +1907,11 @@ function Homepage({onNavigate, onTrivia}){
       </Panel>
     </div>
 
-    {/* LIVE PLAYER STATS WIDGET */}
-    <LiveStatsWidget onNavigate={onNavigate}/>
-
     {/* AI PREDICTOR WIDGET */}
     <StickyPredictor onNavigate={onNavigate}/>
+
+    {/* LIVE PLAYER STATS WIDGET */}
+    <LiveStatsWidget onNavigate={onNavigate}/>
 
     {/* STORY TEASER */}
     {D.STORIES.greatestFinals.length>0 && <Panel
