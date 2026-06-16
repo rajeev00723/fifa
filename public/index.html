@@ -2525,9 +2525,16 @@ function PlayerStockMarket(){
   return <div>
     <H2 eyebrow="Player Trading Floor" title="Golden Boot Stock Market"/>
     <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>
-      Tournament Impact Stock — priced from goals, assists and stage weighting. Tracks momentum shifts after each match.
-      <Info text="Stock price = (goals × 10 × stage multiplier) + (assists × 5) + (penalties × 3) + base 50. Stage multiplier rises as tournament progresses. % change reflects gain since previous match."/>
+      Tournament Impact Stock — a synthetic engagement metric priced from goals, assists and stage weighting.
+      <Info text="Stock price = (goals × 10 × stage multiplier) + (assists × 5) + (penalties × 3) + base 50. Stage multiplier rises as tournament progresses. % change reflects gain since previous match. This is a model-generated metric for engagement — not sourced from FIFA, Opta or any official provider."/>
+      {" "}<span style={{font:`11px ${mono}`,color:C.red,border:`1px solid ${C.red}`,borderRadius:3,padding:"1px 5px"}}>MODEL ONLY</span>
     </p>
+    <div style={{padding:"8px 12px",borderRadius:4,background:"rgba(217,84,63,.06)",border:`1px solid rgba(217,84,63,.2)`,marginBottom:16,font:`11px/1.5 ${mono}`,color:C.mute}}>
+      Data source: live scorer feed (goals/assists) + synthetic weighting formula. For real shot accuracy, xG and advanced metrics, official providers include{" "}
+      <a href="https://statsbomb.com/what-we-do/data/" target="_blank" rel="noopener noreferrer" style={{color:C.gold,textDecoration:"none"}}>StatsBomb</a>,{" "}
+      <a href="https://www.statsperform.com/opta/" target="_blank" rel="noopener noreferrer" style={{color:C.gold,textDecoration:"none"}}>Opta</a>, and{" "}
+      <a href="https://developer.sportradar.com/" target="_blank" rel="noopener noreferrer" style={{color:C.gold,textDecoration:"none"}}>SportsRadar</a>.
+    </div>
     <div style={{display:"flex",gap:8,marginBottom:16}}>
       {[["stock","By Stock Price"],["change","By Movement"]].map(([k,l])=>(
         <button key={k} onClick={()=>setSortBy(k)} style={{font:`600 11px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,border:"none",background:sortBy===k?C.gold:"transparent",outline:sortBy===k?"none":`1px solid ${C.line}`,color:sortBy===k?C.pitch:"#a0b8ac"}}>{l}</button>

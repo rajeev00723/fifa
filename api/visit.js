@@ -43,6 +43,20 @@ async function getStats() {
 }
 
 // ── NEWS FEED ─────────────────────────────────────────────────────────────────
+// Decode HTML entities so RSS text displays cleanly (no &lt;a href=... artifacts)
+function decodeEntities(str) {
+  return str
+    .replace(/&amp;/g,  "&")
+    .replace(/&lt;/g,   "<")
+    .replace(/&gt;/g,   ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g,  "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .trim();
+}
+
 function parseRSS(xml) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -54,13 +68,14 @@ function parseRSS(xml) {
       const match = r.exec(block);
       return match ? (match[1] || match[2] || "").trim() : "";
     };
-    const title = get("title");
+    // Strip HTML tags first, then decode entities for clean readable text
+    const clean = (raw) => decodeEntities(raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+    const title = clean(get("title"));
     const link  = get("link") || block.match(/<link>([^<]+)<\/link>/)?.[1] || "";
-    const desc  = get("description").replace(/<[^>]*>/g, "").slice(0, 160);
+    const desc  = clean(get("description")).slice(0, 180);
     const pub   = get("pubDate");
-    // extract image from media:thumbnail or enclosure
     const img   = block.match(/url="([^"]+\.(jpg|jpeg|png|webp)[^"]*)"/i)?.[1] || null;
-    const src   = get("source") || "";
+    const src   = decodeEntities(get("source") || "");
     if (title && link) items.push({ title, link, desc, pub, img, src });
   }
   return items;
