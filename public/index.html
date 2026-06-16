@@ -112,51 +112,55 @@ const tip = {contentStyle:{background:C.pitch,border:`1px solid ${C.line}`,fontF
 function Info({text, label}){
   const [open,setOpen]=useState(false);
   const ref=useRef(null);
-  // Position-aware: flip below if too close to top of viewport
+  const closeTimer=useRef(null);
   const [flipDown,setFlipDown]=useState(false);
+
   const handleOpen=()=>{
+    clearTimeout(closeTimer.current);
     if(ref.current){
       const rect=ref.current.getBoundingClientRect();
-      setFlipDown(rect.top<160);
+      setFlipDown(rect.top<180);
     }
     setOpen(true);
   };
+  const handleClose=()=>{
+    // Small delay so user can move cursor to read the tooltip
+    closeTimer.current=setTimeout(()=>setOpen(false),200);
+  };
+
   return (
     <span ref={ref} style={{position:"relative",display:"inline-flex",alignItems:"center",gap:4,verticalAlign:"middle"}}>
       {label&&<span style={{font:`inherit`}}>{label}</span>}
       <button
         onClick={e=>{e.stopPropagation();open?setOpen(false):handleOpen();}}
         onMouseEnter={handleOpen}
-        onMouseLeave={()=>setOpen(false)}
+        onMouseLeave={handleClose}
         aria-label="More information"
-        style={{background:"none",border:"none",cursor:"pointer",padding:"0 2px",display:"inline-flex",alignItems:"center",lineHeight:1}}>
+        style={{background:"none",border:"none",cursor:"pointer",padding:"4px",display:"inline-flex",alignItems:"center",lineHeight:1,touchAction:"manipulation"}}>
         <span style={{
           display:"inline-flex",alignItems:"center",justifyContent:"center",
-          width:15,height:15,borderRadius:"50%",
+          width:16,height:16,borderRadius:"50%",
           border:`1px solid ${open?C.gold:C.mute}`,
           font:`700 9px/1 ${mono}`,color:open?C.gold:C.mute,flexShrink:0,
           transition:"border-color 120ms,color 120ms",
         }}>i</span>
       </button>
-      {open&&<div role="tooltip" style={{
-        position:"absolute",
-        ...(flipDown
-          ? {top:"calc(100% + 6px)",bottom:"auto"}
-          : {bottom:"calc(100% + 6px)",top:"auto"}),
-        left:"50%",transform:"translateX(-50%)",
-        background:C.pitch2,border:`1px solid ${C.gold}`,borderRadius:6,
-        padding:"10px 13px",width:240,zIndex:200,
-        font:`12px/1.6 ${display}`,color:C.chalk,
-        boxShadow:"0 8px 24px rgba(0,0,0,.6)",pointerEvents:"none",
-      }}>
+      {open&&<div
+        role="tooltip"
+        onMouseEnter={()=>clearTimeout(closeTimer.current)}
+        onMouseLeave={handleClose}
+        style={{
+          position:"fixed",
+          top:ref.current?ref.current.getBoundingClientRect().bottom+8+"px":"50%",
+          left:ref.current?Math.min(ref.current.getBoundingClientRect().left,window.innerWidth-260)+"px":"50%",
+          background:C.pitch2,border:`1px solid ${C.gold}`,borderRadius:6,
+          padding:"10px 13px",width:240,zIndex:9999,
+          font:`12px/1.6 ${display}`,color:C.chalk,
+          boxShadow:"0 8px 24px rgba(0,0,0,.7)",
+        }}>
         <div style={{font:`600 10px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:5}}>HOW IT WORKS</div>
         {text}
-        <span style={{position:"absolute",
-          ...(flipDown
-            ? {bottom:"100%",borderBottom:`6px solid ${C.gold}`,borderTop:"none",top:"auto"}
-            : {top:"100%",borderTop:`6px solid ${C.gold}`,borderBottom:"none",bottom:"auto"}),
-          left:"50%",transform:"translateX(-50%)",
-          width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent"}}/>
+        <button onClick={()=>setOpen(false)} style={{position:"absolute",top:6,right:8,background:"none",border:"none",cursor:"pointer",color:C.mute,fontSize:14,padding:2,lineHeight:1}}>✕</button>
       </div>}
     </span>
   );
@@ -525,10 +529,15 @@ function ScorerRace(){
 /* ===================== SQUAD MODAL ===================== */
 function SquadModal({id,onClose}){
   const [d,setD]=useState(null); const [err,setErr]=useState(null);
-  useEffect(()=>{ if(!id)return; setD(null);setErr(null);
-    fetch("/api/match?squad="+id).then(r=>r.json()).then(j=>{ if(j.error)throw new Error(j.error); setD(j); }).catch(e=>setErr(e.message));
+  useEffect(()=>{
+    if(!id||id==="null"||id==="undefined") return;
+    setD(null); setErr(null);
+    fetch("/api/match?squad="+id)
+      .then(r=>r.json())
+      .then(j=>{ if(j.error) throw new Error(j.error); setD(j); })
+      .catch(e=>setErr(e.message));
   },[id]);
-  if(!id) return null;
+  if(!id||id==="null"||id==="undefined") return null;
   const age=(dob)=>{ if(!dob)return"—"; const d=new Date(dob); return Math.floor((Date.now()-d)/3.15576e10); };
   const byPos={}; (d?.squad||[]).forEach(p=>{ const k=p.position||"Other"; (byPos[k]=byPos[k]||[]).push(p); });
   return (
@@ -610,8 +619,8 @@ function Standings({onOpenTeam}){
         const advancing=r.position<=2;
         return (
           <div key={r.position}
-            onClick={()=>r.teamId&&onOpenTeam&&onOpenTeam(r.teamId)}
-            title={r.teamId?"View squad":""}
+            onClick={()=>{ if(r.teamId&&Number(r.teamId)>0&&onOpenTeam) onOpenTeam(r.teamId); }}
+            title={r.teamId?"Tap to view squad":""}
             style={{
               display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,
               padding:"9px 14px",alignItems:"center",cursor:r.teamId?"pointer":"default",
