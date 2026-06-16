@@ -379,11 +379,11 @@ function Live({onOpenMatch}) {
   useEffect(()=>{ load(); timer.current=setInterval(load,REFRESH_MS); const t=setInterval(()=>setSecs(s=>s>0?s-1:0),1000); return()=>{clearInterval(timer.current);clearInterval(t);}; },[]);
   const Row=({m})=>(
     <div onClick={()=>onOpenMatch&&onOpenMatch(m.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${C.line}`,cursor:"pointer"}} title="View match detail">
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:9,font:`600 15px ${display}`}}><span>{m.home.name}</span><Crest src={m.home.crest}/></div>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:9,font:`600 15px ${display}`,minWidth:0}}><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.home.name}</span><Crest src={m.home.crest}/></div>
       <div style={{display:"flex",gap:6,alignItems:"center",minWidth:90,justifyContent:"center"}}>
         <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.home.score??"–"}</span><span style={{color:C.mute}}>:</span><span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score??"–"}</span>
       </div>
-      <div style={{flex:1,display:"flex",alignItems:"center",gap:9,font:`600 15px ${display}`}}><Crest src={m.away.crest}/><span>{m.away.name}</span></div>
+      <div style={{flex:1,display:"flex",alignItems:"center",gap:9,font:`600 15px ${display}`,minWidth:0}}><Crest src={m.away.crest}/><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.away.name}</span></div>
       <div style={{width:82,textAlign:"right",font:`600 11px ${mono}`,color:m.status==="LIVE"?C.red:C.mute}}>
         {m.status==="LIVE"?(m.minute?m.minute+"'":"LIVE"):m.status==="FINISHED"?"FT":localTime(m.utcKickoff)}
       </div>
@@ -1671,7 +1671,7 @@ function Results({onOpenMatch}){
         <span style={{font:`800 20px ${display}`,color:C.gold}}>{m.away.score}</span>
       </div>
       <div style={{flex:1,display:"flex",alignItems:"center",gap:9,font:`600 14px ${display}`}}>
-        <Crest src={m.away.crest}/><span>{m.away.name}</span>
+        <Crest src={m.away.crest}/><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.away.name}</span>
       </div>
       <div style={{width:44,textAlign:"right",font:`600 10px ${mono}`,color:C.mute}}>FT</div>
     </div>
