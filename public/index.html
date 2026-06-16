@@ -547,7 +547,11 @@ function SquadModal({id,onClose}){
           <span style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold}}>SQUAD</span>
           <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",fontFamily:mono}}>Close ✕</button>
         </div>
-        {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>Squad unavailable — {err}.</span></Panel>}
+        {err && <Panel style={{borderColor:C.red}}>
+          <div style={{color:C.red,fontFamily:mono,fontSize:13,marginBottom:6}}>Squad not available</div>
+          <div style={{color:C.mute,fontFamily:mono,fontSize:11,lineHeight:1.6}}>{err}</div>
+          <div style={{color:C.mute,fontFamily:mono,fontSize:11,marginTop:8}}>Squad data from football-data.org becomes available once a team has registered their 2026 World Cup squad. Try again closer to or during the tournament.</div>
+        </Panel>}
         {!d && !err && <div style={{padding:30,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading squad…</div>}
         {d && <div>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><Crest src={d.crest}/><span style={{font:`800 22px ${display}`}}>{d.team}</span></div>
@@ -617,19 +621,20 @@ function Standings({onOpenTeam}){
       {/* rows */}
       {g.table.map((r,ri)=>{
         const advancing=r.position<=2;
+        const hasSquad=r.teamId&&Number(r.teamId)>0;
         return (
           <div key={r.position}
-            onClick={()=>{ if(r.teamId&&Number(r.teamId)>0&&onOpenTeam) onOpenTeam(r.teamId); }}
-            title={r.teamId?"Tap to view squad":""}
+            onClick={()=>{ if(hasSquad&&onOpenTeam) onOpenTeam(r.teamId); }}
+            title={hasSquad?"Tap to view squad":"Squad not available"}
             style={{
               display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,
-              padding:"9px 14px",alignItems:"center",cursor:r.teamId?"pointer":"default",
+              padding:"9px 14px",alignItems:"center",cursor:hasSquad?"pointer":"default",
               borderTop:`1px solid ${C.line}`,
               borderLeft:`3px solid ${advancing?C.grass:"transparent"}`,
               transition:"background 120ms",
               background:"transparent",
             }}
-            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.03)"}
+            onMouseEnter={e=>{ if(hasSquad) e.currentTarget.style.background="rgba(255,255,255,.03)"; }}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}
           >
             <span style={{font:`700 11px ${mono}`,color:advancing?C.grass:C.mute}}>{r.position}</span>
