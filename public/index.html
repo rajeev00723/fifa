@@ -260,33 +260,50 @@ function TypewriterInput({value, onChange, onKeyDown, style={}}){
     "What happened at the 1970 final?",
   ];
   const [ph,setPh]=useState("");
-  const [pidx,setPidx]=useState(0);
-  const [typing,setTyping]=useState(true);
+  // Use refs (not state) for the animation engine itself — avoids stale-closure
+  // bugs where setTimeout callbacks read an outdated character count.
+  const pidxRef=useRef(0);
+  const charRef=useRef(0);
+  const phaseRef=useRef("typing"); // "typing" | "pause" | "erasing"
+  const timeoutRef=useRef(null);
+
   useEffect(()=>{
-    if(value) return; // don't animate when user is typing
-    let i=0, timeout;
-    const target=prompts[pidx];
-    if(typing){
-      const tick=()=>{
-        i++;
-        setPh(target.slice(0,i));
-        if(i<target.length) timeout=setTimeout(tick,38);
-        else timeout=setTimeout(()=>setTyping(false),2200);
-      };
-      timeout=setTimeout(tick,38);
-    } else {
-      const tick=()=>{
-        i=ph.length;
-        const erase=()=>{
-          if(i>0){ i--; setPh(target.slice(0,i)); setTimeout(erase,18); }
-          else { setPidx(p=>(p+1)%prompts.length); setTyping(true); }
-        };
-        erase();
-      };
-      timeout=setTimeout(tick,300);
-    }
-    return ()=>clearTimeout(timeout);
-  },[pidx,typing,value]);
+    if(value){ clearTimeout(timeoutRef.current); return; } // user is typing — pause animation
+
+    const TYPE_MS=42, ERASE_MS=22, PAUSE_MS=2400, GAP_MS=400;
+
+    const tick=()=>{
+      const target=prompts[pidxRef.current];
+
+      if(phaseRef.current==="typing"){
+        charRef.current++;
+        setPh(target.slice(0,charRef.current));
+        if(charRef.current>=target.length){
+          phaseRef.current="pause";
+          timeoutRef.current=setTimeout(tick,PAUSE_MS);
+        } else {
+          timeoutRef.current=setTimeout(tick,TYPE_MS);
+        }
+      } else if(phaseRef.current==="pause"){
+        phaseRef.current="erasing";
+        timeoutRef.current=setTimeout(tick,ERASE_MS);
+      } else { // erasing
+        charRef.current--;
+        setPh(target.slice(0,charRef.current));
+        if(charRef.current<=0){
+          pidxRef.current=(pidxRef.current+1)%prompts.length;
+          phaseRef.current="typing";
+          timeoutRef.current=setTimeout(tick,GAP_MS);
+        } else {
+          timeoutRef.current=setTimeout(tick,ERASE_MS);
+        }
+      }
+    };
+
+    timeoutRef.current=setTimeout(tick,TYPE_MS);
+    return ()=>clearTimeout(timeoutRef.current);
+  },[value]);
+
   return <input value={value} onChange={onChange} onKeyDown={onKeyDown}
     className="search-hero"
     placeholder={value?"Search teams, coaches, upsets, records…":ph||"Ask anything about the World Cup…"}
@@ -335,7 +352,7 @@ function MatchModal({id,onClose}){
           {d&&<span style={{font:`11px ${mono}`,color:C.mute,marginLeft:12}}>{d.stage?.replace(/_/g," ")}</span>}</div>
           <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",fontFamily:mono}}>Close ✕</button>
         </div>
-        {err&&<Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>{err}</span></Panel>}
+        {err&&<Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono,fontSize:13}}>{err}</span></Panel>}
         {!d&&!err&&<div style={{padding:30,textAlign:"center",color:C.mute,fontFamily:mono}}>Loading…</div>}
         {d&&<div>
           <div style={{textAlign:"center",padding:"16px 0 20px",borderBottom:`1px solid ${C.line}`,marginBottom:20}}>
@@ -451,10 +468,10 @@ function Live({onOpenMatch}) {
   return (<div>
     <H2 eyebrow="Live Feed — 2026 FIFA World Cup" title="Today's matches" right={
       <div style={{font:`600 11px ${mono}`,color:C.mute,textAlign:"right"}}><div><span className="pulse"></span> &nbsp;AUTO-REFRESH</div><div style={{marginTop:6}}>next pull in {secs}s</div></div>}/>
-    {err && <Panel style={{borderColor:C.red}}><div style={{font:`600 13px ${mono}`,color:C.red}}>Feed unavailable</div><div style={{font:`13px/1.5 ${display}`,color:C.mute,marginTop:8}}>{err}. Check FOOTBALL_DATA_API_KEY in Vercel. Retrying automatically.</div></Panel>}
+    {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}><div style={{font:`600 13px ${mono}`,color:C.red}}>Feed unavailable</div><div style={{font:`13px/1.5 ${display}`,color:C.mute,marginTop:8}}>{err}. Check FOOTBALL_DATA_API_KEY in Vercel. Retrying automatically.</div></Panel>}
     {!data && !err && <Panel><MatchSkeleton/><MatchSkeleton/><MatchSkeleton/></Panel>}
     {data && <div>
-      {data.live.length>0 && <Panel style={{marginBottom:16,borderColor:C.red}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.red,marginBottom:6}}>● IN PLAY</div>{data.live.map(m=><Row key={m.id} m={m}/>)}</Panel>}
+      {data.live.length>0 && <Panel style={{marginBottom:16,borderColor:"rgba(217,84,63,.35)",background:"linear-gradient(135deg, rgba(217,84,63,.05), rgba(217,84,63,.01))"}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.red,marginBottom:6}}>● IN PLAY</div>{data.live.map(m=><Row key={m.id} m={m}/>)}</Panel>}
       <Panel style={{marginBottom:16}}><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold,marginBottom:6}}>FINISHED TODAY</div>{data.finishedToday.length?data.finishedToday.map(m=><Row key={m.id} m={m}/>):<Empty>No matches finished yet today.</Empty>}</Panel>
       <Panel><div style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.mute,marginBottom:6}}>UPCOMING TODAY</div>{data.upcomingToday.length?data.upcomingToday.map(m=><Row key={m.id} m={m}/>):<Empty>Nothing else scheduled today.</Empty>}</Panel>
       <div style={{font:`11px ${mono}`,color:C.mute,textAlign:"center",marginTop:16}}>Feed updated {localTime(data.updatedAt)} ({TZ_LABEL}) · served from cache</div>
@@ -467,9 +484,25 @@ function ScorerRace(){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
   const [statTab,setStatTab]=useState("goals");
   const [expanded,setExpanded]=useState(null);
+  const [fading,setFading]=useState(false);
+  const tabRefs=useRef({});
+  const [pillStyle,setPillStyle]=useState({left:0,width:0});
   const RECORDS={goals:{all:16,player:"Miroslav Klose",single:13},assists:{all:8,player:"Various",single:8},penalties:{all:4,player:"Various",single:3}};
   useEffect(()=>{ fetch("/api/scorers").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
   const tabs=[["goals","Goals"],["assists","Assists"],["penalties","Pens"]];
+
+  // Position the sliding gold pill behind whichever tab is active
+  useEffect(()=>{
+    const el=tabRefs.current[statTab];
+    if(el) setPillStyle({left:el.offsetLeft,width:el.offsetWidth});
+  },[statTab,data]);
+
+  const switchTab=(k)=>{
+    if(k===statTab) return;
+    setFading(true);
+    setTimeout(()=>{ setStatTab(k); setExpanded(null); setFading(false); },160);
+  };
+
   const rows=(data?.scorers||[])
     .filter(s=>(s[statTab]||0)>0)
     .sort((a,b)=>(b[statTab]||0)-(a[statTab]||0))
@@ -478,17 +511,20 @@ function ScorerRace(){
   const rec=RECORDS[statTab];
   return (<div>
     <H2 eyebrow="Live — Golden Boot Race" title="Top scorers, this tournament"/>
-    <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
-      {tabs.map(([k,l])=><button key={k} onClick={()=>{setStatTab(k);setExpanded(null);}}
-        style={{font:`600 12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,
-          border:"none",background:statTab===k?C.gold:"transparent",
+    <div style={{position:"relative",display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+      {/* Sliding gold pill background */}
+      <div style={{position:"absolute",top:0,bottom:0,left:pillStyle.left,width:pillStyle.width,
+        background:C.gold,borderRadius:3,transition:"left .25s cubic-bezier(.3,.7,.4,1),width .25s cubic-bezier(.3,.7,.4,1)",zIndex:0}}/>
+      {tabs.map(([k,l])=><button key={k} ref={el=>tabRefs.current[k]=el} onClick={()=>switchTab(k)}
+        style={{position:"relative",zIndex:1,font:`600 12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,
+          border:"none",background:"transparent",
           outline:statTab===k?"none":`1px solid ${C.line}`,
-          color:statTab===k?C.pitch:"#a0b8ac"}}>{l}</button>)}
+          color:statTab===k?C.pitch:"#a0b8ac",transition:"color .2s"}}>{l}</button>)}
     </div>
-    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Scorers unavailable — {err}</span></Panel>}
+    {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono}}>Scorers unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
     {data && rows.length===0 && <Empty>No data yet for this stat — check back once more matches are played.</Empty>}
-    {rows.length>0 && <Panel>
+    {rows.length>0 && <Panel style={{opacity:fading?0:1,transform:fading?"translateY(6px)":"translateY(0)",transition:"opacity .16s,transform .16s"}}>
       {rows.map((s,i)=>{
         const isOpen=expanded===s.player;
         const val=s[statTab]||0;
@@ -555,7 +591,7 @@ function SquadModal({id,onClose}){
           <span style={{font:`700 11px ${mono}`,letterSpacing:".14em",color:C.gold}}>SQUAD</span>
           <button onClick={onClose} style={{background:"none",border:`1px solid ${C.line}`,color:C.chalk,borderRadius:4,padding:"6px 12px",cursor:"pointer",fontFamily:mono}}>Close ✕</button>
         </div>
-        {err && <Panel style={{borderColor:C.red}}>
+        {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}>
           <div style={{color:C.red,fontFamily:mono,fontSize:13,marginBottom:6}}>Squad not available</div>
           <div style={{color:C.mute,fontFamily:mono,fontSize:11,lineHeight:1.6}}>{err}</div>
           <div style={{color:C.mute,fontFamily:mono,fontSize:11,marginTop:8}}>Squad data from football-data.org becomes available once a team has registered their 2026 World Cup squad. Try again closer to or during the tournament.</div>
@@ -677,7 +713,7 @@ function Standings({onOpenTeam}){
       </div>
     </div>}
 
-    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
+    {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono,textAlign:"center"}}>Loading standings…</div>}
 
     {/* 3-column grid on desktop, 1 on mobile */}
@@ -708,7 +744,7 @@ function QualOdds(){
   return (<div>
     <H2 eyebrow="Live — Qualification Model" title="Who advances?" right={<span className="est" style={{display:"inline-flex",alignItems:"center",gap:5}}>MODEL ESTIMATE <Info text="These percentages are calculated by a mathematical model — not official predictions. They blend real current points with each team's pre-tournament strength rating. Treat them as informed estimates, not facts."/></span>}/>
     <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 18px",maxWidth:560}}>Probability of finishing top-2 and reaching the knockouts. Blends current points (real) with team strength and games remaining. An estimate, not a guarantee.</p>
-    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
+    {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono}}>Standings unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
     {data && data.groups.map(g=>(
       <Panel key={g.group} style={{marginBottom:14}}>
@@ -861,7 +897,7 @@ function PlayerPredictor(){
       <label style={{font:`600 11px ${mono}`,color:C.mute}}>REMAINING GAMES FOR LEADERS: <span style={{color:C.gold}}>{remaining}</span></label>
       <input type="range" min="0" max="6" value={remaining} onChange={e=>setRemaining(+e.target.value)} style={{width:"100%",marginTop:8,accentColor:C.gold}}/>
     </Panel>
-    {err && <Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>Scorers unavailable — {err}</span></Panel>}
+    {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono}}>Scorers unavailable — {err}</span></Panel>}
     {!data && !err && <div style={{padding:30,color:C.mute,fontFamily:mono}}>Loading…</div>}
     {data && rows.length===0 && <Empty>No goals yet — projections appear once players are on the scoresheet.</Empty>}
     {rows.length>0 && <Panel>
@@ -1262,7 +1298,7 @@ function Upsets(){
       </ResponsiveContainer>
     </Panel>
     {D.UPSETS.map((u,i)=>(
-      <div key={i} onClick={()=>setSel(sel?.match===u.match?null:u)} style={{background:sel?.match===u.match?`rgba(217,84,63,.08)`:C.panel,border:`1px solid ${sel?.match===u.match?C.red:C.line}`,borderRadius:4,padding:16,marginBottom:10,cursor:"pointer"}}>
+      <div key={i} onClick={()=>setSel(sel?.match===u.match?null:u)} style={{background:sel?.match===u.match?`rgba(217,84,63,.06)`:C.panel,border:`1px solid ${sel?.match===u.match?"rgba(217,84,63,.4)":C.line}`,borderRadius:4,padding:16,marginBottom:10,cursor:"pointer"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8}}>
           <div style={{font:`700 16px ${display}`,color:C.chalk}}>⚡ {u.match}</div>
           <div style={{display:"flex",gap:10,font:`11px ${mono}`,color:C.mute}}>
@@ -1673,31 +1709,33 @@ function StickyPredictor({onNavigate}){
           padding:"10px 14px",borderRadius:5,marginBottom:10,
           background:myVote?.choice==="upset"?"rgba(217,84,63,.12)":"rgba(63,174,111,.12)",
           border:`1px solid ${myVote?.choice==="upset"?C.red:C.grass}`,
+          display:"flex",alignItems:"center",gap:8,
         }}>
-          <div style={{font:`600 13px ${display}`,color:myVote?.choice==="upset"?C.red:C.grass,marginBottom:3}}>
-            {myVote?.choice==="upset"?"Upset prediction locked in!":"AI prediction confirmed!"}
-          </div>
-          <div style={{font:`11px ${mono}`,color:C.mute}}>
-            {myVote?.choice==="upset"
-              ?"Check back after the match to see if you beat the AI."
-              :"Check back after the match to see if you and the AI were right."}
+          <span style={{fontSize:16}}>{myVote?.choice==="upset"?"⚡":"✓"}</span>
+          <div>
+            <div style={{font:`600 13px ${display}`,color:myVote?.choice==="upset"?C.red:C.grass,marginBottom:2}}>
+              {myVote?.choice==="upset"?"Upset prediction locked in!":"Prediction saved!"}
+            </div>
+            <div style={{font:`11px ${mono}`,color:C.mute}}>
+              Come back post-match to check your score.
+            </div>
           </div>
         </div>}
 
         {!myVote
           ?<div style={{display:"flex",gap:8}}>
             <button onClick={()=>vote(key,"agree",aiPick)}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(63,174,111,.12)"}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(63,174,111,.14)";e.currentTarget.style.transform="scale(1.03)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(63,174,111,.18)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow="none";}}
               style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,
-                border:`1px solid ${C.grass}`,background:"transparent",color:C.grass,transition:"background .15s"}}>
+                border:`1px solid ${C.grass}`,background:"transparent",color:C.grass,transition:"background .15s,transform .15s,box-shadow .15s"}}>
               Agree with AI
             </button>
             <button onClick={()=>vote(key,"upset",aiPick)}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(217,84,63,.12)"}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(217,84,63,.14)";e.currentTarget.style.transform="scale(1.03)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(217,84,63,.18)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow="none";}}
               style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,
-                border:`1px solid ${C.red}`,background:"transparent",color:C.red,transition:"background .15s"}}>
+                border:`1px solid ${C.red}`,background:"transparent",color:C.red,transition:"background .15s,transform .15s,box-shadow .15s"}}>
               Predict Upset
             </button>
           </div>
@@ -1944,10 +1982,19 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
   const [q,setQ]=useState("");
   const [results,setResults]=useState([]);
   const [visits,setVisits]=useState(null);
+  const [pillLoading,setPillLoading]=useState(false);
   const todayEvts=D.todayEvents();
   const today=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long"});
   useEffect(()=>{ setResults(q.length>1?D.search(q,5):[]); },[q]);
   useEffect(()=>{ fetch("/api/visit").then(r=>r.json()).then(setVisits).catch(()=>{}); },[]);
+  const handlePillClick=(label,nav,action)=>{
+    if(action==="trivia"){ onTrivia(); return; }
+    if(nav){ onNavigate(nav); return; }
+    // Auto-inject into search: brief skeleton flash, then populate query
+    setPillLoading(true);
+    setQ("");
+    setTimeout(()=>{ setQ(label); setPillLoading(false); },420);
+  };
   const pills=["Messi vs Maradona","Daily Trivia","Biggest upsets ever","Brazil titles","Germany finals record","2022 final story"];
   const scores=D.allIntelligenceScores().slice(0,3);
   const topCoach=D.COACHES_RANKED[0];
@@ -1982,17 +2029,20 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
           </div>)}
         </div>}
       </div>
+      {/* Brief skeleton flash when a pill auto-injects into search */}
+      {pillLoading&&<div style={{maxWidth:580,margin:"10px auto 0"}}><Skeleton height={14} width="70%" style={{margin:"0 auto 6px"}}/><Skeleton height={14} width="50%" style={{margin:"0 auto"}}/></div>}
+
       {/* Suggestion pills — 3-column grid so they align cleanly on mobile */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:16,maxWidth:500,margin:"16px auto 0"}}>
         {[["Messi vs Maradona","Vs Mode",null],["Daily Trivia",null,"trivia"],["Biggest upsets",null,null],["Brazil titles",null,null],["Germany finals",null,null],["2022 final story","Stories",null]].map(([label,nav,action])=>(
-          <button key={label} onClick={()=>action==="trivia"?onTrivia():nav?onNavigate(nav):setQ(label)}
-            onMouseEnter={e=>{e.currentTarget.style.background="rgba(232,184,75,.12)";e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.color=C.chalk;}}
-            onMouseLeave={e=>{e.currentTarget.style.background=action==="trivia"?"rgba(232,184,75,.08)":"transparent";e.currentTarget.style.borderColor=action==="trivia"?C.gold:C.line;e.currentTarget.style.color=action==="trivia"?C.gold:C.mute;}}
+          <button key={label} onClick={()=>handlePillClick(label,nav,action)}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(232,184,75,.12)";e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.color=C.chalk;e.currentTarget.style.transform="translateY(-1px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background=action==="trivia"?"rgba(232,184,75,.08)":"transparent";e.currentTarget.style.borderColor=action==="trivia"?C.gold:C.line;e.currentTarget.style.color=action==="trivia"?C.gold:C.mute;e.currentTarget.style.transform="translateY(0)";}}
             style={{font:`11px ${mono}`,padding:"7px 10px",cursor:"pointer",borderRadius:20,
               border:`1px solid ${action==="trivia"?C.gold:C.line}`,
               background:action==="trivia"?"rgba(232,184,75,.08)":"transparent",
               color:action==="trivia"?C.gold:C.mute,textAlign:"center",
-              transition:"background .15s,border-color .15s,color .15s",
+              transition:"background .15s,border-color .15s,color .15s,transform .15s",
               whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</button>
         ))}
       </div>
@@ -2016,10 +2066,10 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
       ))}
     </Panel>}
 
-    {/* THREE COLUMN PANELS — stacks to 1 col on mobile */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16,marginBottom:20}}>
+    {/* THREE COLUMN PANELS — stacks to 1 col on mobile, equal heights guaranteed */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16,marginBottom:20,alignItems:"stretch"}}>
       {/* Intelligence Scores */}
-      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s",height:"100%"}}
         onClick={()=>onNavigate("Scores")}
         onMouseEnter={e=>e.currentTarget.style.borderColor=C.gold}
         onMouseLeave={e=>e.currentTarget.style.borderColor=C.line}>
@@ -2035,7 +2085,7 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
       </Panel>
 
       {/* Top Coach */}
-      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s",height:"100%"}}
         onClick={()=>onNavigate("Coach Ranking")}
         onMouseEnter={e=>e.currentTarget.style.borderColor=C.grass}
         onMouseLeave={e=>e.currentTarget.style.borderColor=C.line}>
@@ -2052,7 +2102,7 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
       </Panel>
 
       {/* Greatest upset */}
-      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
+      <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s",height:"100%"}}
         onClick={()=>onNavigate("Upsets")}
         onMouseEnter={e=>e.currentTarget.style.borderColor=C.red}
         onMouseLeave={e=>e.currentTarget.style.borderColor=C.line}>
@@ -2141,7 +2191,7 @@ function Results({onOpenMatch}){
     <div style={{font:`11px ${mono}`,color:C.mute,marginBottom:16}}>
       All times shown in your local timezone ({TZ_LABEL}). Click any match for the goal timeline and lineups.
     </div>
-    {err && <Panel style={{borderColor:C.red}}>
+    {err && <Panel style={{borderColor:"rgba(217,84,63,.35)"}}>
       <div style={{font:`600 13px ${mono}`,color:C.red,marginBottom:6}}>Results unavailable</div>
       <div style={{font:`12px/1.5 ${mono}`,color:C.mute}}>{err}</div>
       <div style={{font:`12px/1.5 ${display}`,color:C.mute,marginTop:8}}>This usually means the provider returned an error. Check your <b style={{color:C.chalk}}>FOOTBALL_DATA_API_KEY</b> in Vercel Environment Variables, then redeploy. Open the Vercel function logs for the exact provider message.</div>
@@ -2359,7 +2409,7 @@ function NewsFeed(){
       </button>)}
     </div>}
 
-    {err&&<Panel style={{borderColor:C.red}}>
+    {err&&<Panel style={{borderColor:"rgba(217,84,63,.35)"}}>
       <div style={{font:`13px ${display}`,color:C.red}}>News feed unavailable — {err}</div>
       <div style={{font:`12px ${mono}`,color:C.mute,marginTop:6}}>RSS feeds may be temporarily unreachable. Try again in a few minutes.</div>
     </Panel>}
@@ -2701,7 +2751,7 @@ function PlayerStockMarket(){
         <button key={k} onClick={()=>setSortBy(k)} style={{font:`600 11px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:3,border:"none",background:sortBy===k?C.gold:"transparent",outline:sortBy===k?"none":`1px solid ${C.line}`,color:sortBy===k?C.pitch:"#a0b8ac"}}>{l}</button>
       ))}
     </div>
-    {err&&<Panel style={{borderColor:C.red}}><span style={{color:C.red,fontFamily:mono}}>{err}</span></Panel>}
+    {err&&<Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono}}>{err}</span></Panel>}
     {!data&&!err&&<Panel><MatchSkeleton/><MatchSkeleton/><MatchSkeleton/></Panel>}
     {rows.length>0&&<Panel>
       {/* Column headers */}
