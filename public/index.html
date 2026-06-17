@@ -1839,17 +1839,18 @@ function Homepage({onNavigate, onTrivia}){
           </div>)}
         </div>}
       </div>
-      {/* Suggestion pills */}
-      <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
-        {[["Messi vs Maradona","Vs Mode",null],["Daily Trivia",null,"trivia"],["Biggest upsets ever",null,null],["Brazil titles",null,null],["Germany finals record",null,null],["2022 final story","Stories",null]].map(([label,nav,action])=>(
+      {/* Suggestion pills — 3-column grid so they align cleanly on mobile */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:16,maxWidth:500,margin:"16px auto 0"}}>
+        {[["Messi vs Maradona","Vs Mode",null],["Daily Trivia",null,"trivia"],["Biggest upsets",null,null],["Brazil titles",null,null],["Germany finals",null,null],["2022 final story","Stories",null]].map(([label,nav,action])=>(
           <button key={label} onClick={()=>action==="trivia"?onTrivia():nav?onNavigate(nav):setQ(label)}
             onMouseEnter={e=>{e.currentTarget.style.background="rgba(232,184,75,.12)";e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.color=C.chalk;}}
             onMouseLeave={e=>{e.currentTarget.style.background=action==="trivia"?"rgba(232,184,75,.08)":"transparent";e.currentTarget.style.borderColor=action==="trivia"?C.gold:C.line;e.currentTarget.style.color=action==="trivia"?C.gold:C.mute;}}
-            style={{font:`12px ${mono}`,padding:"7px 14px",cursor:"pointer",borderRadius:20,
+            style={{font:`11px ${mono}`,padding:"7px 10px",cursor:"pointer",borderRadius:20,
               border:`1px solid ${action==="trivia"?C.gold:C.line}`,
               background:action==="trivia"?"rgba(232,184,75,.08)":"transparent",
-              color:action==="trivia"?C.gold:C.mute,
-              transition:"background .15s,border-color .15s,color .15s"}}>{label}</button>
+              color:action==="trivia"?C.gold:C.mute,textAlign:"center",
+              transition:"background .15s,border-color .15s,color .15s",
+              whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</button>
         ))}
       </div>
       {/* Visitor stats */}
@@ -1872,8 +1873,8 @@ function Homepage({onNavigate, onTrivia}){
       ))}
     </Panel>}
 
-    {/* THREE COLUMN PANELS */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
+    {/* THREE COLUMN PANELS — stacks to 1 col on mobile */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16,marginBottom:20}}>
       {/* Intelligence Scores */}
       <Panel style={{cursor:"pointer",display:"flex",flexDirection:"column",transition:"border-color .15s"}}
         onClick={()=>onNavigate("Scores")}
