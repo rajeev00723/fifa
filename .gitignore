@@ -1,5 +1,7 @@
+.lnksecrt
 .env
 .env.local
 .vercel
 node_modules
 fifpwd
+.lnksecrt
