@@ -1795,7 +1795,114 @@ function LiveStatsWidget({onNavigate}){
 }
 
 /* ===================== HOMEPAGE ===================== */
-function Homepage({onNavigate, onTrivia}){
+/* ===================== TODAY'S HIGHLIGHT BANNER ===================== */
+// Surfaces the single most newsworthy storyline from today's finished matches.
+// Built ENTIRELY from real match event data (goals/cards with minute + player),
+// never from unstructured news text — so we never risk inventing a stat.
+function TodayHighlight({onOpenMatch}){
+  const [highlight,setHighlight]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    fetch("/api/live").then(r=>r.json()).then(async d=>{
+      const finished=d.finishedToday||[];
+      if(finished.length===0){ setLoading(false); return; }
+
+      // Fetch match detail (goal scorers) for each finished match, in parallel
+      const details=await Promise.all(
+        finished.slice(0,6).map(m=>
+          fetch("/api/match?id="+m.id).then(r=>r.json()).then(detail=>({m,detail})).catch(()=>null)
+        )
+      );
+
+      const candidates=[];
+      details.filter(Boolean).forEach(({m,detail})=>{
+        if(!detail.events) return;
+        const goals=detail.events.filter(e=>e.type==="GOAL");
+        // Tally goals per player
+        const tally={};
+        goals.forEach(g=>{ if(g.player) tally[g.player]=(tally[g.player]||0)+1; });
+
+        // Candidate 1: hat-trick or brace (3+ or 2+ goals by one player)
+        Object.entries(tally).forEach(([player,count])=>{
+          if(count>=2){
+            const scorerTeam=goals.find(g=>g.player===player)?.team;
+            candidates.push({
+              priority: count>=3?100:60,
+              type: count>=3?"hattrick":"brace",
+              text: `${player} scored ${count>=3?"a hat-trick":"a brace"} as ${m.home.name} ${m.home.score}–${m.away.score} ${m.away.name}`,
+              icon:"⚽", matchId:m.id, team:scorerTeam,
+            });
+          }
+        });
+
+        // Candidate 2: big win margin (3+ goal difference)
+        const margin=Math.abs((m.home.score??0)-(m.away.score??0));
+        if(margin>=3){
+          const winner=m.home.score>m.away.score?m.home.name:m.away.name;
+          candidates.push({
+            priority:50+margin,
+            type:"rout",
+            text:`${winner} put on a statement performance — ${m.home.name} ${m.home.score}–${m.away.score} ${m.away.name}`,
+            icon:"🔥", matchId:m.id,
+          });
+        }
+
+        // Candidate 3: late drama (goal in 85'+)
+        const lateGoals=goals.filter(g=>g.minute>=85);
+        if(lateGoals.length>0 && margin<=1){
+          candidates.push({
+            priority:40,
+            type:"late",
+            text:`${lateGoals[lateGoals.length-1].player} struck in the ${lateGoals[lateGoals.length-1].minute}' to decide ${m.home.name} ${m.home.score}–${m.away.score} ${m.away.name}`,
+            icon:"⏱", matchId:m.id,
+          });
+        }
+
+        // Candidate 4: red card drama
+        const reds=detail.events.filter(e=>e.type==="RED");
+        if(reds.length>0){
+          candidates.push({
+            priority:30,
+            type:"red",
+            text:`${reds[0].player} sent off as ${m.home.name} ${m.home.score}–${m.away.score} ${m.away.name}`,
+            icon:"🟥", matchId:m.id,
+          });
+        }
+      });
+
+      // Pick highest-priority candidate
+      candidates.sort((a,b)=>b.priority-a.priority);
+      setHighlight(candidates[0]||null);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[]);
+
+  if(loading) return <div style={{maxWidth:680,margin:"0 auto 28px"}}><Skeleton height={56} radius={8}/></div>;
+  if(!highlight) return null;
+
+  return (
+    <div onClick={()=>onOpenMatch&&onOpenMatch(highlight.matchId)}
+      style={{maxWidth:680,margin:"0 auto 28px",cursor:"pointer"}}>
+      <div style={{
+        display:"flex",alignItems:"center",gap:14,padding:"14px 20px",borderRadius:8,
+        background:"linear-gradient(135deg, rgba(232,184,75,.12), rgba(232,184,75,.04))",
+        border:`1px solid ${C.gold}`,transition:"background .15s",
+      }}
+      onMouseEnter={e=>e.currentTarget.style.background="linear-gradient(135deg, rgba(232,184,75,.18), rgba(232,184,75,.06))"}
+      onMouseLeave={e=>e.currentTarget.style.background="linear-gradient(135deg, rgba(232,184,75,.12), rgba(232,184,75,.04))"}>
+        <span style={{fontSize:26,flexShrink:0}}>{highlight.icon}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{font:`600 9px ${mono}`,color:C.gold,letterSpacing:".14em",marginBottom:3}}>TODAY'S HIGHLIGHT</div>
+          <div style={{font:`700 15px/1.3 ${display}`,color:C.chalk}}>{highlight.text}</div>
+        </div>
+        <span style={{font:`11px ${mono}`,color:C.gold,flexShrink:0}}>View →</span>
+      </div>
+    </div>
+  );
+}
+
+function Homepage({onNavigate, onTrivia, onOpenMatch}){
   const D=window.WCData;
   const M=window.WCModel;
   const [q,setQ]=useState("");
@@ -1925,6 +2032,9 @@ function Homepage({onNavigate, onTrivia}){
         <button onClick={e=>{e.stopPropagation();onNavigate("Upsets");}} style={{font:`600 11px ${mono}`,color:C.gold,background:"none",border:"none",borderTop:`1px solid ${C.line}`,cursor:"pointer",textAlign:"left",padding:"10px 0 0",marginTop:14,width:"100%"}}>Read full story →</button>
       </Panel>
     </div>
+
+    {/* TODAY'S HIGHLIGHT — eye-catching real-data banner */}
+    <TodayHighlight onOpenMatch={onOpenMatch}/>
 
     {/* AI PREDICTOR WIDGET */}
     <StickyPredictor onNavigate={onNavigate}/>
@@ -2770,7 +2880,7 @@ function App(){
     </div>
 
     <main style={{maxWidth:1040,margin:"0 auto",padding:"28px 24px 80px"}}>
-      {tab===0 ? <Homepage onNavigate={navigate} onTrivia={()=>setShowTrivia(true)}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
+      {tab===0 ? <Homepage onNavigate={navigate} onTrivia={()=>setShowTrivia(true)} onOpenMatch={setMatchId}/> : Active ? <Active onOpenMatch={setMatchId} onOpenTeam={setTeamId}/> : null}
     </main>
     <footer style={{borderTop:`1px solid ${C.line}`,padding:"20px 28px",font:`12px/1.6 ${mono}`,color:C.mute,textAlign:"center",background:C.navBg}}>
       <div style={{color:C.gold,letterSpacing:".06em"}}>★ A hobby project — built for fun, not affiliated with FIFA.</div>
