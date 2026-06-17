@@ -178,6 +178,19 @@ function Info({text, label}){
 // Passing no timeZone option to Intl/toLocaleTimeString uses the browser's
 // local timezone automatically. We append the short TZ name (e.g. "GMT+8")
 // so users know exactly what timezone they're seeing.
+// Anonymous per-browser device ID — used for community vote tallies.
+// No login, no PII, just a random UUID persisted in localStorage.
+function getDeviceId(){
+  try{
+    let id=localStorage.getItem("wc-device-id");
+    if(!id){
+      id=crypto.randomUUID?crypto.randomUUID():"d-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+      localStorage.setItem("wc-device-id",id);
+    }
+    return id;
+  }catch{ return "anon-"+Math.random().toString(36).slice(2); }
+}
+
 const TZ_LABEL = (() => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone.replace("_"," "); } catch { return ""; }
 })();
@@ -250,13 +263,13 @@ if(!document.getElementById("placeholder-style")){
 /** Typewriter input placeholder — cycles through questions every 4s */
 function TypewriterInput({value, onChange, onKeyDown, style={}}){
   const prompts=[
-    "Try: Who won the 1994 Golden Boot?",
-    "Try: Predict USA vs England",
+    "Who has the most World Cup goals ever?",
     "Did Morocco make history in 2022?",
     "Which coach won the most tournaments?",
     "What was the biggest upset in 1950?",
     "How many finals has Germany reached?",
     "Who scored the Goal of the Century?",
+    "Which team has the best knockout record?",
     "What happened at the 1970 final?",
   ];
   const [ph,setPh]=useState("");
@@ -423,7 +436,7 @@ function MatchModal({id,onClose}){
                 <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{story.narrative}</div>
                 <div style={{font:`10px ${mono}`,color:C.line,marginTop:10}}>AI-generated from match data · Not a human report</div>
               </>}
-              {!story.narrative&&<div style={{font:`12px ${mono}`,color:C.mute}}>AI match reports.</div>}
+              {!story.narrative&&<div style={{font:`12px ${mono}`,color:C.mute}}>Add ANTHROPIC_API_KEY to Vercel env vars to enable AI match reports.</div>}
             </>}
           </div>}
         </div>}
@@ -1567,39 +1580,88 @@ function NationEvolution(){
 
 /* ===================== HERO HOMEPAGE ===================== */
 /* ===================== STICKY PREDICTOR WIDGET ===================== */
+// Flag emoji lookup — covers all 48 WC2026 teams. Falls back to a generic globe.
+const TEAM_FLAGS = {
+  "USA":"🇺🇸","United States":"🇺🇸","Brazil":"🇧🇷","Argentina":"🇦🇷","Mexico":"🇲🇽",
+  "Canada":"🇨🇦","Colombia":"🇨🇴","Ecuador":"🇪🇨","Uruguay":"🇺🇾","Paraguay":"🇵🇾",
+  "Panama":"🇵🇦","Haiti":"🇭🇹","Curacao":"🇨🇼","France":"🇫🇷","Germany":"🇩🇪",
+  "Spain":"🇪🇸","England":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Portugal":"🇵🇹","Netherlands":"🇳🇱","Belgium":"🇧🇪",
+  "Croatia":"🇭🇷","Switzerland":"🇨🇭","Austria":"🇦🇹","Scotland":"🏴󠁧󠁢󠁳󠁣󠁴󠁿","Norway":"🇳🇴",
+  "Sweden":"🇸🇪","Czechia":"🇨🇿","Türkiye":"🇹🇷","Turkey":"🇹🇷","Bosnia and Herzegovina":"🇧🇦",
+  "Morocco":"🇲🇦","Senegal":"🇸🇳","Egypt":"🇪🇬","Algeria":"🇩🇿","Tunisia":"🇹🇳",
+  "Ghana":"🇬🇭","Ivory Coast":"🇨🇮","South Africa":"🇿🇦","Cape Verde":"🇨🇻","DR Congo":"🇨🇩",
+  "Japan":"🇯🇵","South Korea":"🇰🇷","Australia":"🇦🇺","Iran":"🇮🇷","Saudi Arabia":"🇸🇦",
+  "Qatar":"🇶🇦","Uzbekistan":"🇺🇿","Jordan":"🇯🇴","Iraq":"🇮🇶","New Zealand":"🇳🇿",
+};
+const flagOf=(team)=>TEAM_FLAGS[team]||"🌍";
+
+/* ===================== WEEKLY LEADERBOARD ===================== */
+function WeeklyLeaderboard(){
+  const [data,setData]=useState(null);
+  const myId=useRef(getDeviceId());
+  useEffect(()=>{
+    fetch("/api/community?action=leaderboard").then(r=>r.json()).then(setData).catch(()=>{});
+  },[]);
+  const list=data?.leaderboard||[];
+  if(list.length===0) return null;
+
+  return <Panel style={{marginBottom:20}}>
+    <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:12}}>
+      🏆 TOP HUMANS THIS WEEK
+      <Info text="Ranked by correct predictions in the AI Predictor vs You game over the last 7 days. Anonymous — tracked by browser, not by account."/>
+    </div>
+    {list.slice(0,5).map((row,i)=>{
+      const isMe=row.deviceId===myId.current;
+      const acc=row.resolvedCount>0?Math.round((row.correctCount/row.resolvedCount)*100):0;
+      return <div key={row.deviceId} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",
+        borderBottom:i<list.length-1?`1px solid ${C.line}`:"none",
+        background:isMe?"rgba(232,184,75,.06)":"transparent",borderRadius:isMe?4:0,
+        paddingLeft:isMe?8:0,paddingRight:isMe?8:0}}>
+        <span style={{font:`800 13px ${mono}`,color:i===0?C.gold:i<3?C.chalk:C.mute,width:20}}>#{row.rank}</span>
+        <span style={{flex:1,font:`600 13px ${display}`,color:isMe?C.gold:C.chalk}}>
+          {isMe?"You":`Human ${row.deviceId.slice(0,6)}`}
+        </span>
+        <span style={{font:`700 13px ${mono}`,color:C.grass}}>{row.correctCount} correct</span>
+        <span style={{font:`11px ${mono}`,color:C.mute}}>{acc}%</span>
+      </div>;
+    })}
+  </Panel>;
+}
+
 function StickyPredictor({onNavigate}){
   const M=window.WCModel;
   const [data,setData]=useState(null);
-  // votes: { matchKey: { choice:"agree"|"upset", aiPick:string, lockedAt:ISO, result?:"correct"|"wrong"|"pending" } }
   const [votes,setVotes]=useState({});
-  const [flash,setFlash]=useState(null); // matchKey currently showing badge
+  const [flash,setFlash]=useState(null);
+  const [community,setCommunity]=useState({}); // {matchKey: {community:{TeamA:pct,...}, totalVotes}}
+  const deviceId=useRef(getDeviceId());
 
   useEffect(()=>{
     fetch("/api/live").then(r=>r.json()).then(d=>{
       setData(d);
-      // Check finished matches against stored predictions
       const stored=JSON.parse(localStorage.getItem("wc-predictor-votes")||"{}");
       let updated=false;
       (d.finishedToday||[]).forEach(m=>{
         const key=`${m.home.name}v${m.away.name}`;
         const v=stored[key];
         if(v&&v.result==="pending"){
-          // Determine actual result
           const hs=m.home.score??0, as=m.away.score??0;
           const actualWinner=hs>as?m.home.name:as>hs?m.away.name:"Draw";
-          const aiWasRight=actualWinner===v.aiPick||(actualWinner==="Draw"&&v.aiPick==="Draw");
-          // User correct if: agreed with AI and AI was right, OR predicted upset and AI was wrong
-          const userCorrect=(v.choice==="agree"&&aiWasRight)||(v.choice==="upset"&&!aiWasRight);
+          const userCorrect=v.choice===actualWinner;
           stored[key]={...v,result:userCorrect?"correct":"wrong",actualWinner,score:`${hs}–${as}`};
           updated=true;
         }
       });
-      if(updated){
-        localStorage.setItem("wc-predictor-votes",JSON.stringify(stored));
-        setVotes(stored);
-      } else {
-        setVotes(stored);
-      }
+      if(updated) localStorage.setItem("wc-predictor-votes",JSON.stringify(stored));
+      setVotes(stored);
+
+      // Fetch real community vote percentages for each upcoming match
+      (d.upcomingToday||[]).slice(0,2).forEach(m=>{
+        const key=`${m.home.name}v${m.away.name}`;
+        fetch(`/api/community?action=predict&matchKey=${encodeURIComponent(key)}`)
+          .then(r=>r.json()).then(j=>setCommunity(prev=>({...prev,[key]:j})))
+          .catch(()=>{});
+      });
     }).catch(()=>{
       try{setVotes(JSON.parse(localStorage.getItem("wc-predictor-votes")||"{}"));}catch{}
     });
@@ -1610,12 +1672,17 @@ function StickyPredictor({onNavigate}){
     const next={...votes,[key]:entry};
     setVotes(next);
     try{localStorage.setItem("wc-predictor-votes",JSON.stringify(next));}catch{}
-    // Show badge then fade
     setFlash(key);
-    setTimeout(()=>setFlash(null),3500);
+    setTimeout(()=>setFlash(null),3000);
+    // Persist to Supabase for real community tallies — fire and forget
+    fetch("/api/community?action=predict",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({matchKey:key,deviceId:deviceId.current,choice,aiPick}),
+    }).then(()=>
+      fetch(`/api/community?action=predict&matchKey=${encodeURIComponent(key)}`).then(r=>r.json()).then(j=>setCommunity(prev=>({...prev,[key]:j})))
+    ).catch(()=>{});
   };
 
-  // Mini confetti burst — pure CSS, rendered as absolute dots
   const Confetti=({active})=>{
     if(!active) return null;
     const dots=["#e8b84b","#3fae6f","#eef3ee","#d9543f","#74acdf"];
@@ -1631,26 +1698,24 @@ function StickyPredictor({onNavigate}){
     </div>;
   };
 
-  // Score summary for resolved predictions
   const allVotes=Object.values(votes);
   const correct=allVotes.filter(v=>v.result==="correct").length;
   const wrong=allVotes.filter(v=>v.result==="wrong").length;
   const pending=allVotes.filter(v=>v.result==="pending").length;
 
-  // What to show: upcoming + any with pending/resolved predictions from finished matches
   const upcoming=(data?.upcomingToday||[]).slice(0,2);
+  const liveNow=(data?.live||[]).slice(0,2);
   const resolvedKeys=Object.keys(votes).filter(k=>votes[k].result!=="pending");
-  const resolvedToShow=resolvedKeys.slice(-2); // last 2 resolved
+  const resolvedToShow=resolvedKeys.slice(-2);
 
   if(!data&&Object.keys(votes).length===0) return null;
-  if(upcoming.length===0&&resolvedToShow.length===0) return null;
+  if(upcoming.length===0&&resolvedToShow.length===0&&liveNow.length===0) return null;
 
   return <Panel style={{marginBottom:20,borderColor:C.goldDim,background:"rgba(232,184,75,.03)"}}>
-    {/* Header with running score */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
       <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em"}}>
         AI PREDICTOR vs YOU
-        <Info text="Vote before each match kicks off. After full time, we check if your prediction was correct. Your score is saved on this device."/>
+        <Info text="Vote before each match kicks off. After full time, we check if your prediction was correct. Your personal score is saved on this device; community percentages are shared across all visitors."/>
       </div>
       {(correct+wrong)>0&&<div style={{display:"flex",gap:10,font:`11px ${mono}`}}>
         <span style={{color:C.grass}}>Correct: <b>{correct}</b></span>
@@ -1659,99 +1724,114 @@ function StickyPredictor({onNavigate}){
       </div>}
     </div>
 
-    {/* Resolved predictions */}
+    {/* Live match minute ticker — if anything is in play right now */}
+    {liveNow.map(m=>(
+      <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 12px",
+        borderRadius:5,background:"rgba(217,84,63,.08)",border:"1px solid rgba(217,84,63,.3)"}}>
+        <span style={{position:"relative",width:7,height:7,flexShrink:0}}>
+          <span style={{position:"absolute",width:7,height:7,borderRadius:"50%",background:C.red}}/>
+          <span style={{position:"absolute",width:7,height:7,borderRadius:"50%",background:C.red,animation:"liveDotPing 1.6s ease-out infinite"}}/>
+        </span>
+        <span style={{font:`700 11px ${mono}`,color:C.red}}>LIVE {m.minute?m.minute+"'":""}</span>
+        <span style={{font:`600 13px ${display}`,color:C.chalk,flex:1}}>
+          {flagOf(m.home.name)} {m.home.name} {m.home.score??0}–{m.away.score??0} {m.away.name} {flagOf(m.away.name)}
+        </span>
+      </div>
+    ))}
+
     {resolvedToShow.map(key=>{
       const v=votes[key];
       const isCorrect=v.result==="correct";
       const [home,away]=key.replace("v"," vs ").split(" vs ");
       return <div key={key} style={{marginBottom:12,padding:"10px 12px",borderRadius:4,
         background:isCorrect?"rgba(63,174,111,.08)":"rgba(217,84,63,.08)",
-        border:`1px solid ${isCorrect?C.grass:C.red}`}}>
+        border:`1px solid ${isCorrect?C.grass:"rgba(217,84,63,.4)"}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <span style={{font:`700 14px ${display}`,color:isCorrect?C.grass:C.red}}>
-            {isCorrect?"✓":"✗"}
-          </span>
-          <span style={{font:`600 13px ${display}`,color:C.chalk}}>{key.replace("v"," vs ")}</span>
+          <span style={{font:`700 14px ${display}`,color:isCorrect?C.grass:C.red}}>{isCorrect?"✓":"✗"}</span>
+          <span style={{font:`600 13px ${display}`,color:C.chalk}}>{flagOf(home)} {key.replace("v"," vs ")} {flagOf(away)}</span>
           {v.score&&<span style={{font:`700 13px ${mono}`,color:C.gold}}>{v.score}</span>}
         </div>
         <div style={{font:`11px ${mono}`,color:C.mute,marginTop:4}}>
-          You: {v.choice==="agree"?"Agreed with AI":"Predicted upset"} · AI picked {v.aiPick} ·
-          {isCorrect?" Your prediction was correct!": " AI was right this time"}
+          You predicted {v.choice} · AI picked {v.aiPick} · {isCorrect?"You beat the AI!":"AI got it right"}
         </div>
       </div>;
     })}
 
-    {/* Upcoming matches to predict */}
     {upcoming.map(m=>{
       const key=`${m.home.name}v${m.away.name}`;
       const {winA,winB}=M.matchOutcome(m.home.name,m.away.name);
-      const aiPick=winA>winB?m.home.name:winB>winA?m.away.name:"Draw";
-      const aiPct=Math.round(Math.max(winA,winB)*100);
+      const drawProb=Math.max(0,1-winA-winB)||0.08;
+      const norm=winA+winB+drawProb;
+      const aiPcts={[m.home.name]:Math.round(winA/norm*100),[m.away.name]:Math.round(winB/norm*100),Draw:Math.round(drawProb/norm*100)};
+      const aiPick=Object.entries(aiPcts).sort((a,b)=>b[1]-a[1])[0][0];
       const myVote=votes[key];
-      const agreeCount=Object.values(votes).filter(v=>v.choice==="agree").length;
-      const upsetCount=Object.values(votes).filter(v=>v.choice==="upset").length;
-      const total=Math.max(1,agreeCount+upsetCount);
+      const comm=community[key]?.community||{};
+      const commTotal=community[key]?.totalVotes||0;
       const isFlashing=flash===key;
+
+      const ChoiceBtn=({team,pct})=>{
+        const selected=myVote?.choice===team;
+        const col=team==="Draw"?C.mute:C.chalk;
+        return <button onClick={()=>!myVote&&vote(key,team,aiPick)}
+          onMouseEnter={e=>{ if(!myVote){e.currentTarget.style.transform="scale(1.03)";e.currentTarget.style.boxShadow=`0 0 0 3px rgba(232,184,75,.18)`;e.currentTarget.style.borderColor=C.gold;} }}
+          onMouseLeave={e=>{ if(!myVote){e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=selected?C.gold:C.line;} }}
+          style={{flex:1,font:`600 12px ${display}`,padding:"10px 8px",cursor:myVote?"default":"pointer",borderRadius:5,
+            border:`1.5px solid ${selected?C.gold:C.line}`,
+            background:selected?"rgba(232,184,75,.14)":"transparent",
+            color:selected?C.gold:col,transition:"transform .15s,box-shadow .15s,border-color .15s",
+            display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+          <span>{team==="Draw"?"🤝":flagOf(team)} {team==="Draw"?"Draw":team}</span>
+          {myVote&&<span style={{font:`700 10px ${mono}`,color:C.mute}}>{comm[team]||0}%</span>}
+        </button>;
+      };
 
       return <div key={key} style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${C.line}`,position:"relative"}}>
         <Confetti active={isFlashing}/>
         <div style={{font:`600 14px/1.3 ${display}`,color:C.chalk,marginBottom:4}}>
-          {m.home.name} vs {m.away.name}
+          {flagOf(m.home.name)} {m.home.name} vs {m.away.name} {flagOf(m.away.name)}
           <span style={{font:`11px ${mono}`,color:C.mute,marginLeft:8}}>{localTime(m.utcKickoff)}</span>
         </div>
         <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>
-          AI picks <b style={{color:C.chalk}}>{aiPick}</b> — {aiPct}% confidence
-          <Info text={`Elo model: ${m.home.name} rated ${M.rating(m.home.name)}, ${m.away.name} rated ${M.rating(m.away.name)}. Win probability uses the logistic formula: 1/(1+10^(ΔElo/400)). A 200-point gap gives ~76% win probability to the stronger team.`}/>
+          AI picks <b style={{color:C.chalk}}>{aiPick}</b> — {aiPcts[aiPick]}% confidence
+          <Info text={`Elo model: ${m.home.name} rated ${M.rating(m.home.name)}, ${m.away.name} rated ${M.rating(m.away.name)}. Win probability uses the logistic formula: 1/(1+10^(ΔElo/400)).`}/>
         </div>
 
-        {/* Vote confirmation badge */}
         {isFlashing&&<div className="pred-badge" style={{
           padding:"10px 14px",borderRadius:5,marginBottom:10,
-          background:myVote?.choice==="upset"?"rgba(217,84,63,.12)":"rgba(63,174,111,.12)",
-          border:`1px solid ${myVote?.choice==="upset"?C.red:C.grass}`,
+          background:"rgba(232,184,75,.12)",border:`1px solid ${C.gold}`,
           display:"flex",alignItems:"center",gap:8,
         }}>
-          <span style={{fontSize:16}}>{myVote?.choice==="upset"?"⚡":"✓"}</span>
+          <span style={{fontSize:16}}>✓</span>
           <div>
-            <div style={{font:`600 13px ${display}`,color:myVote?.choice==="upset"?C.red:C.grass,marginBottom:2}}>
-              {myVote?.choice==="upset"?"Upset prediction locked in!":"Prediction saved!"}
-            </div>
-            <div style={{font:`11px ${mono}`,color:C.mute}}>
-              Come back post-match to check your score.
-            </div>
+            <div style={{font:`600 13px ${display}`,color:C.gold,marginBottom:2}}>Prediction saved!</div>
+            <div style={{font:`11px ${mono}`,color:C.mute}}>Come back post-match to check your score.</div>
           </div>
         </div>}
 
-        {!myVote
-          ?<div style={{display:"flex",gap:8}}>
-            <button onClick={()=>vote(key,"agree",aiPick)}
-              onMouseEnter={e=>{e.currentTarget.style.background="rgba(63,174,111,.14)";e.currentTarget.style.transform="scale(1.03)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(63,174,111,.18)";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow="none";}}
-              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,
-                border:`1px solid ${C.grass}`,background:"transparent",color:C.grass,transition:"background .15s,transform .15s,box-shadow .15s"}}>
-              Agree with AI
-            </button>
-            <button onClick={()=>vote(key,"upset",aiPick)}
-              onMouseEnter={e=>{e.currentTarget.style.background="rgba(217,84,63,.14)";e.currentTarget.style.transform="scale(1.03)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(217,84,63,.18)";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.transform="scale(1)";e.currentTarget.style.boxShadow="none";}}
-              style={{flex:1,font:`600 12px ${mono}`,padding:"9px",cursor:"pointer",borderRadius:4,
-                border:`1px solid ${C.red}`,background:"transparent",color:C.red,transition:"background .15s,transform .15s,box-shadow .15s"}}>
-              Predict Upset
-            </button>
+        <div style={{display:"flex",gap:6,marginBottom:myVote?10:0}}>
+          <ChoiceBtn team={m.home.name} pct={aiPcts[m.home.name]}/>
+          <ChoiceBtn team="Draw" pct={aiPcts.Draw}/>
+          <ChoiceBtn team={m.away.name} pct={aiPcts[m.away.name]}/>
+        </div>
+
+        {/* Community vs AI consensus bar */}
+        {myVote&&commTotal>0&&<div>
+          <div style={{font:`9px ${mono}`,color:C.mute,letterSpacing:".08em",marginBottom:6}}>
+            COMMUNITY ({commTotal} {commTotal===1?"vote":"votes"}) VS AI
           </div>
-          :!isFlashing&&<div>
-            <div style={{font:`11px ${mono}`,color:myVote.choice==="agree"?C.grass:C.red,marginBottom:8}}>
-              {myVote.choice==="agree"?"Agreed with AI":"Predicted upset"} — result after kick-off
+          {[m.home.name,"Draw",m.away.name].map(team=>(
+            <div key={team} style={{marginBottom:5}}>
+              <div style={{display:"flex",justifyContent:"space-between",font:`10px ${mono}`,color:C.mute,marginBottom:2}}>
+                <span>{team==="Draw"?"Draw":`${flagOf(team)} ${team}`}</span>
+                <span>Community {comm[team]||0}% · AI {aiPcts[team]}%</span>
+              </div>
+              <div style={{position:"relative",height:5,background:C.pitch2,borderRadius:3,overflow:"hidden"}}>
+                <div style={{position:"absolute",left:0,height:"100%",width:(comm[team]||0)+"%",background:C.gold,borderRadius:3,opacity:.85}}/>
+                <div style={{position:"absolute",left:0,top:0,height:"100%",width:aiPcts[team]+"%",borderRight:`2px solid ${C.chalk}`}}/>
+              </div>
             </div>
-            <div style={{height:6,background:C.pitch2,borderRadius:3,overflow:"hidden",marginBottom:4}}>
-              <div style={{width:(agreeCount/total*100)+"%",height:"100%",background:C.grass,borderRadius:3}}/>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",font:`10px ${mono}`,color:C.mute}}>
-              <span style={{color:C.grass}}>{Math.round(agreeCount/total*100)}% agree with AI</span>
-              <span style={{color:C.red}}>{Math.round(upsetCount/total*100)}% predict upset</span>
-            </div>
-          </div>
-        }
+          ))}
+        </div>}
       </div>;
     })}
     <button onClick={()=>onNavigate("Team Predictor")} style={{font:`11px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:0}}>
@@ -1976,6 +2056,90 @@ function TodayHighlight({onOpenMatch}){
   );
 }
 
+/* ===================== STORY CAROUSEL ===================== */
+// Swipeable card carousel of the greatest World Cup moments — touch drag,
+// mouse drag, dot indicators, auto-advance every 6s (pauses on interaction).
+function StoryCarousel({onNavigate}){
+  const D=window.WCData;
+  const stories=[...D.STORIES.greatestFinals, ...D.STORIES.greatestGoals];
+  const [idx,setIdx]=useState(0);
+  const [dragX,setDragX]=useState(0);
+  const dragging=useRef(false);
+  const startX=useRef(0);
+  const autoRef=useRef(null);
+
+  const next=()=>setIdx(i=>(i+1)%stories.length);
+  const prev=()=>setIdx(i=>(i-1+stories.length)%stories.length);
+
+  // Auto-advance every 6s, paused while user is dragging
+  useEffect(()=>{
+    autoRef.current=setInterval(()=>{ if(!dragging.current) next(); },6000);
+    return ()=>clearInterval(autoRef.current);
+  },[stories.length]);
+
+  const onDown=(clientX)=>{ dragging.current=true; startX.current=clientX; };
+  const onMove=(clientX)=>{ if(dragging.current) setDragX(clientX-startX.current); };
+  const onUp=()=>{
+    if(!dragging.current) return;
+    dragging.current=false;
+    if(dragX<-60) next();
+    else if(dragX>60) prev();
+    setDragX(0);
+  };
+
+  if(stories.length===0) return null;
+  const s=stories[idx];
+
+  return <Panel style={{background:"rgba(232,184,75,.04)",borderColor:C.gold,padding:0,overflow:"hidden"}}>
+    <div style={{padding:"18px 22px 6px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em"}}>📖 GREATEST WORLD CUP MOMENTS</div>
+      <div style={{font:`10px ${mono}`,color:C.mute}}>{idx+1} / {stories.length}</div>
+    </div>
+
+    <div
+      style={{position:"relative",overflow:"hidden",cursor:"grab",touchAction:"pan-y",userSelect:"none"}}
+      onMouseDown={e=>onDown(e.clientX)}
+      onMouseMove={e=>onMove(e.clientX)}
+      onMouseUp={onUp}
+      onMouseLeave={onUp}
+      onTouchStart={e=>onDown(e.touches[0].clientX)}
+      onTouchMove={e=>onMove(e.touches[0].clientX)}
+      onTouchEnd={onUp}
+    >
+      <div style={{
+        display:"flex",transform:`translateX(${-idx*100+(dragX/3.6)}%)`,
+        transition:dragging.current?"none":"transform .4s cubic-bezier(.25,.8,.3,1)",
+      }}>
+        {stories.map((st,i)=>(
+          <div key={i} style={{flex:"0 0 100%",padding:"10px 22px 18px",boxSizing:"border-box"}}>
+            <div style={{font:`800 20px/1.1 ${display}`,color:C.chalk,marginBottom:6}}>{st.icon} {st.title}</div>
+            <div style={{font:`12px ${mono}`,color:C.gold,marginBottom:10}}>{st.year} · {st.subtitle}</div>
+            <div style={{position:"relative",maxHeight:84,overflow:"hidden",marginBottom:6}}>
+              <div style={{font:`14px/1.7 ${display}`,color:C.mute}}>{st.story}</div>
+              <div style={{position:"absolute",bottom:0,left:0,right:0,height:32,background:`linear-gradient(transparent,${C.panel})`}}/>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 22px 18px"}}>
+      <div style={{display:"flex",gap:6}}>
+        {stories.map((_,i)=>(
+          <button key={i} onClick={()=>setIdx(i)}
+            style={{width:i===idx?18:6,height:6,borderRadius:3,border:"none",cursor:"pointer",
+              background:i===idx?C.gold:C.line,transition:"width .25s,background .25s",padding:0}}/>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={prev} style={{width:28,height:28,borderRadius:"50%",border:`1px solid ${C.line}`,background:"transparent",color:C.mute,cursor:"pointer",font:`14px ${mono}`}}>‹</button>
+        <button onClick={next} style={{width:28,height:28,borderRadius:"50%",border:`1px solid ${C.line}`,background:"transparent",color:C.mute,cursor:"pointer",font:`14px ${mono}`}}>›</button>
+        <button onClick={()=>onNavigate("Stories")} style={{font:`600 11px ${mono}`,color:C.gold,background:"none",border:`1px solid ${C.gold}`,borderRadius:14,padding:"5px 12px",cursor:"pointer",marginLeft:4}}>All stories →</button>
+      </div>
+    </div>
+  </Panel>;
+}
+
 function Homepage({onNavigate, onTrivia, onOpenMatch}){
   const D=window.WCData;
   const M=window.WCModel;
@@ -1987,6 +2151,25 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
   const today=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long"});
   useEffect(()=>{ setResults(q.length>1?D.search(q,5):[]); },[q]);
   useEffect(()=>{ fetch("/api/visit").then(r=>r.json()).then(setVisits).catch(()=>{}); },[]);
+
+  // Log search terms for "Trending Searches" — debounced 1.2s so we only
+  // log once the user pauses typing, not on every keystroke.
+  useEffect(()=>{
+    if(q.length<3) return;
+    const t=setTimeout(()=>{
+      fetch("/api/community?action=trending",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({query:q}),
+      }).catch(()=>{});
+    },1200);
+    return ()=>clearTimeout(t);
+  },[q]);
+
+  const [trending,setTrending]=useState(null);
+  useEffect(()=>{
+    fetch("/api/community?action=trending").then(r=>r.json()).then(d=>setTrending(d.trending||[])).catch(()=>setTrending([]));
+  },[]);
+
   const handlePillClick=(label,nav,action)=>{
     if(action==="trivia"){ onTrivia(); return; }
     if(nav){ onNavigate(nav); return; }
@@ -2046,6 +2229,29 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
               whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</button>
         ))}
       </div>
+
+      {/* Trending Searches — real queries from other visitors, last 24h */}
+      {trending&&trending.length>=3&&<div style={{marginTop:14,maxWidth:560,margin:"14px auto 0"}}>
+        <div style={{font:`600 9px ${mono}`,color:C.mute,letterSpacing:".14em",marginBottom:8,display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}>
+          <span style={{position:"relative",width:5,height:5,display:"inline-block"}}>
+            <span style={{position:"absolute",width:5,height:5,borderRadius:"50%",background:C.gold}}/>
+            <span style={{position:"absolute",width:5,height:5,borderRadius:"50%",background:C.gold,animation:"liveDotPing 2s ease-out infinite"}}/>
+          </span>
+          TRENDING SEARCHES RIGHT NOW
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center"}}>
+          {trending.map(({query})=>(
+            <button key={query} onClick={()=>handlePillClick(query,null,null)}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.color=C.chalk;}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=C.line;e.currentTarget.style.color=C.mute;}}
+              style={{font:`11px ${mono}`,padding:"5px 12px",cursor:"pointer",borderRadius:14,
+                border:`1px solid ${C.line}`,background:"transparent",color:C.mute,
+                transition:"border-color .15s,color .15s",textTransform:"capitalize"}}>
+              🔥 {query}
+            </button>
+          ))}
+        </div>
+      </div>}
       {/* Visitor stats */}
       {visits&&visits.total>0&&<div style={{marginTop:20,font:`11px ${mono}`,color:C.mute,display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
         <span>👁 <b style={{color:C.chalk}}><AnimatedNumber value={visits.total}/></b> total visits</span>
@@ -2125,14 +2331,17 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
     {/* AI PREDICTOR WIDGET */}
     <StickyPredictor onNavigate={onNavigate}/>
 
-    {/* DAILY TRIVIA QUICK QUIZ */}
-    <HomeTriviaWidget onNavigate={onNavigate}/>
+    {/* TOP HUMANS LEADERBOARD */}
+    <WeeklyLeaderboard/>
+
+    {/* DAILY TRIVIA — inline, answer right here */}
+    <HomepageTrivia/>
 
     {/* LIVE PLAYER STATS WIDGET */}
     <LiveStatsWidget onNavigate={onNavigate}/>
 
-    {/* STORY CAROUSEL */}
-    <StoryCarousel stories={D.STORIES.greatestFinals.slice(0,3)} onNavigate={onNavigate}/>
+    {/* STORY TEASER */}
+    <StoryCarousel onNavigate={onNavigate}/>
   </div>;
 }
 
@@ -2215,86 +2424,72 @@ const TRIVIA=[
   {q:"Which country hosted the first-ever FIFA World Cup in 1930?",a:"Uruguay",opts:["Brazil","Argentina","Uruguay","France"],fact:"Uruguay hosted and won the first World Cup. Only 13 teams participated — European nations largely refused to travel the long sea voyage. Uruguay beat Argentina 4-2 in the final.",year:1930},
   {q:"Germany beat Brazil 7-1 in the 2014 semi-final on Brazilian soil. What is this game known as?",a:"The Mineirazo",opts:["The Maracanazo","The Mineirazo","Die Schwarze Nacht","Das Wunder"],fact:"The 'Mineirazo' (after Estádio Mineirão in Belo Horizonte) is the most shocking scoreline in World Cup history. Germany scored 5 goals in 18 first-half minutes.",year:2014},
 ];
-function HomeTriviaWidget({onNavigate}){
+/* ===================== HOMEPAGE TRIVIA (inline poll) ===================== */
+// Lighter-weight version of DailyTrivia for the front page — answer right
+// there without a click-through, see real community vote tallies.
+function HomepageTrivia(){
   const todaySeed=new Date().toISOString().slice(0,10).replace(/-/g,'');
-  const idx=parseInt(todaySeed)%TRIVIA.length;
-  const q=TRIVIA[idx];
+  const q=TRIVIA[parseInt(todaySeed)%TRIVIA.length];
   const [ans,setAns]=useState(null);
-  const [showFact,setShowFact]=useState(false);
+  const [tally,setTally]=useState(null);
+  const deviceId=useRef(getDeviceId());
+
+  useEffect(()=>{
+    // Restore previous answer for today, if any
+    try{
+      const saved=JSON.parse(localStorage.getItem("wc-trivia-"+todaySeed)||"null");
+      if(saved) setAns(saved);
+    }catch{}
+    fetch(`/api/community?action=trivia&questionDate=${todaySeed}`).then(r=>r.json()).then(setTally).catch(()=>{});
+  },[]);
+
   const correct=ans===q.a;
-  const counts={correct:Math.round(Math.random()*60+20),wrong:Math.round(Math.random()*40+10)};
-  const total=counts.correct+counts.wrong;
-  return <Panel style={{marginBottom:20,borderColor:C.gold,background:"rgba(232,184,75,.04)"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap",marginBottom:14}}>
-      <div>
-        <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:'.1em',marginBottom:8}}>DAILY TRIVIA</div>
-        <div style={{font:`700 20px ${display}`,color:C.chalk,marginBottom:6}}>Quick quiz: test your World Cup knowledge</div>
-        <div style={{font:`12px ${mono}`,color:C.mute,maxWidth:620}}>Answer instantly on the homepage, then see how other fans voted. Instant reveal keeps the game moving.</div>
-      </div>
-      <button onClick={()=>onNavigate("Trivia")} style={{font:`600 11px ${mono}`,padding:"10px 14px",borderRadius:6,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold,cursor:"pointer"}}>Open full trivia →</button>
+  const pickAnswer=(opt)=>{
+    if(ans) return;
+    setAns(opt);
+    try{localStorage.setItem("wc-trivia-"+todaySeed,JSON.stringify(opt));}catch{}
+    fetch("/api/community?action=trivia",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({questionDate:todaySeed,deviceId:deviceId.current,answer:opt,correct:opt===q.a}),
+    }).then(()=>
+      fetch(`/api/community?action=trivia&questionDate=${todaySeed}`).then(r=>r.json()).then(setTally)
+    ).catch(()=>{});
+  };
+
+  const totalVotes=tally?.totalVotes||0;
+  const pctFor=(opt)=>totalVotes>0?Math.round(((tally?.tally?.[opt]||0)/totalVotes)*100):0;
+
+  return <Panel style={{marginBottom:20,borderColor:C.gold,background:"linear-gradient(135deg, rgba(232,184,75,.07), rgba(232,184,75,.02))"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+      <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em"}}>🧠 DAILY TRIVIA{q.year?` · ${q.year}`:""}</div>
+      {totalVotes>0&&<span style={{font:`10px ${mono}`,color:C.mute}}>{totalVotes} {totalVotes===1?"answer":"answers"} today</span>}
     </div>
-    <div style={{font:`700 16px ${display}`,color:C.chalk,marginBottom:14}}>{q.q}</div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+    <div style={{font:`700 16px/1.4 ${display}`,color:C.chalk,marginBottom:14}}>{q.q}</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:ans?12:0}}>
       {q.opts.map((opt,i)=>{
-        const selected=ans===opt;
-        const isCorrect=opt===q.a;
-        const bg=ans?(isCorrect?"rgba(63,174,111,.15)":selected?"rgba(217,84,63,.15)":"transparent"):(selected?"rgba(232,184,75,.1)":"transparent");
-        const border=ans?(isCorrect?C.grass:selected?C.red:C.line):(selected?C.gold:C.line);
-        const color=ans?(isCorrect?C.grass:selected?C.red:C.mute):(selected?C.gold:C.chalk);
-        return <button key={opt} onClick={()=>{if(!ans){setAns(opt);setTimeout(()=>setShowFact(true),350);}}}
-          style={{font:`600 13px ${display}`,padding:"14px 16px",borderRadius:10,border:`1px solid ${border}`,background:bg,color:color,textAlign:"left",cursor:ans?"default":"pointer",transition:"all .18s",minHeight:64,display:"flex",alignItems:"center"}}>
-          <span style={{font:`700 13px ${mono}`,marginRight:10,color:C.mute}}>{"ABCD"[i]}.</span>{opt}
+        const selected=ans===opt, isCorrect=opt===q.a;
+        const showResult=!!ans;
+        const bg=showResult?(isCorrect?"rgba(63,174,111,.14)":selected?"rgba(217,84,63,.12)":"transparent"):"transparent";
+        const border=showResult?(isCorrect?C.grass:selected?C.red:C.line):C.line;
+        const col=showResult?(isCorrect?C.grass:selected?C.red:C.mute):C.chalk;
+        return <button key={opt} onClick={()=>pickAnswer(opt)}
+          onMouseEnter={e=>{ if(!ans){e.currentTarget.style.borderColor=C.gold;e.currentTarget.style.transform="scale(1.02)";} }}
+          onMouseLeave={e=>{ if(!ans){e.currentTarget.style.borderColor=C.line;e.currentTarget.style.transform="scale(1)";} }}
+          style={{font:`600 13px ${display}`,padding:"10px 12px",cursor:ans?"default":"pointer",
+            borderRadius:5,border:`1px solid ${border}`,background:bg,color:col,
+            textAlign:"left",transition:"all .15s",position:"relative",overflow:"hidden"}}>
+          <span style={{position:"relative",zIndex:1,display:"flex",justifyContent:"space-between"}}>
+            <span>{"ABCD"[i]}. {opt}</span>
+            {showResult&&totalVotes>0&&<span style={{font:`10px ${mono}`,opacity:.8}}>{pctFor(opt)}%</span>}
+          </span>
+          {showResult&&totalVotes>0&&<span style={{position:"absolute",left:0,top:0,bottom:0,width:pctFor(opt)+"%",background:isCorrect?"rgba(63,174,111,.1)":"rgba(255,255,255,.04)",zIndex:0}}/>}
         </button>;
       })}
     </div>
-    {ans&&<div style={{padding:"14px 16px",borderRadius:10,background:correct?"rgba(63,174,111,.08)":"rgba(217,84,63,.08)",border:`1px solid ${correct?C.grass:C.red}`,marginBottom:12}}>
-      <div style={{font:`700 14px ${display}`,color:correct?C.grass:C.red,marginBottom:8}}>{correct?"🎉 Correct!":"❌ Not quite — the answer is " + q.a}</div>
-      {showFact&&<div style={{font:`12px/1.6 ${display}`,color:C.mute}}>{q.fact}</div>}
+    {ans&&<div style={{padding:"11px 14px",borderRadius:5,background:correct?"rgba(63,174,111,.08)":"rgba(217,84,63,.08)",border:`1px solid ${correct?C.grass:"rgba(217,84,63,.4)"}`}}>
+      <div style={{font:`700 13px ${display}`,color:correct?C.grass:C.red,marginBottom:4}}>{correct?"Correct!":"Not quite — "+q.a}</div>
+      <div style={{font:`12px/1.5 ${display}`,color:C.mute}}>{q.fact}</div>
     </div>}
-    <div style={{padding:"12px 14px",borderRadius:10,background:C.pitch2,border:`1px solid ${C.line}`}}>
-      <div style={{display:"flex",justifyContent:"space-between",font:`11px ${mono}`,color:C.mute,marginBottom:8}}>
-        <span>Community</span><span>{Math.round(counts.correct/total*100)}% picked the right answer</span>
-      </div>
-      <div style={{height:10,background:C.line,borderRadius:999,overflow:"hidden"}}>
-        <div style={{width:(counts.correct/total*100)+"%",height:"100%",background:C.grass}}/>
-      </div>
-    </div>
-  </Panel>;
-}
-
-function StoryCarousel({stories,onNavigate}){
-  const [index,setIndex]=useState(0);
-  const story=stories[index]||stories[0]||{};
-  return <Panel style={{marginBottom:20,borderColor:C.gold,background:"rgba(232,184,75,.04)"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,marginBottom:14}}>
-      <div>
-        <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:'.1em',marginBottom:8}}>THE GREATEST WORLD CUP MOMENTS</div>
-        <div style={{font:`700 24px ${display}`,color:C.chalk,marginBottom:6}}>{story.title}</div>
-        <div style={{font:`12px ${mono}`,color:C.mute,maxWidth:620}}>{story.subtitle} · {story.year}</div>
-      </div>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={()=>setIndex(i=>Math.max(0,i-1))} disabled={index===0}
-          style={{font:`600 12px ${mono}`,padding:"10px 14px",borderRadius:6,border:`1px solid ${C.line}`,background:"transparent",color:C.mute,cursor:index===0?"not-allowed":"pointer"}}>Prev</button>
-        <button onClick={()=>setIndex(i=>Math.min(stories.length-1,i+1))} disabled={index===stories.length-1}
-          style={{font:`600 12px ${mono}`,padding:"10px 14px",borderRadius:6,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold,cursor:index===stories.length-1?"not-allowed":"pointer"}}>Next</button>
-      </div>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:16,alignItems:"start"}}>
-      <div>
-        <div style={{font:`13px/1.7 ${display}`,color:C.mute,marginBottom:16}}>{story.story}</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          {(story.stats||[]).map((stat,i)=><div key={i} style={{padding:12,border:`1px solid ${C.line}`,borderRadius:8,background:C.pitch2}}>
-            <div style={{font:`700 16px ${display}`,color:C.chalk}}>{stat.value}</div>
-            <div style={{font:`10px ${mono}`,color:C.mute,marginTop:6}}>{stat.label}</div>
-          </div>)}
-        </div>
-      </div>
-      <div style={{padding:16,border:`1px solid ${C.line}`,borderRadius:8,background:C.pitch2}}>
-        <div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:'.12em',marginBottom:10}}>{story.year} Highlight</div>
-        <div style={{font:`13px ${display}`,color:C.chalk,marginBottom:14}}>{story.snippet||story.story.slice(0,190)+"..."}</div>
-        <button onClick={()=>onNavigate("Stories")} style={{font:`600 12px ${mono}`,padding:"10px 14px",borderRadius:6,border:`1px solid ${C.gold}`,background:"transparent",color:C.gold,cursor:"pointer"}}>Read full stories →</button>
-      </div>
-    </div>
   </Panel>;
 }
 
@@ -3019,7 +3214,7 @@ function App(){
             style={{font:`700 11px ${mono}`,padding:"10px 14px",cursor:"pointer",background:"none",border:"none",
               color:isActive?C.gold:"#a0b8ac",borderBottom:`2px solid ${isActive?C.gold:"transparent"}`,
               whiteSpace:"nowrap",flexShrink:0,letterSpacing:".06em",display:"flex",alignItems:"center",gap:5}}>
-            <span style={{fontSize:8}}>{g.icon}</span>{g.label}
+            <span style={{fontSize:8,...(g.label==="LIVE"?{animation:"p 1.4s infinite",color:C.red}:{})}}>{g.icon}</span>{g.label}
           </button>;
         })}
       </div>
