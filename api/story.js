@@ -1,38 +1,40 @@
-import { fetchMatchDetail } from "../lib/provider.js";
+import { fetchMatchDetail, fetchLiveAndToday } from "../lib/provider.js";
 import { cacheGet, cacheSet } from "../lib/cache.js";
+import { postToLinkedIn, formatMatchPost } from "../lib/linkedin.js";
 
 /**
- * GET /api/story?id=12345
+ * Combined endpoint — stays within Vercel Hobby 12-function limit.
  *
- * Returns for a finished match:
- *   1. narrative  — 2-paragraph AI-written match story (Claude API)
- *   2. facts      — auto-computed highlights from match data (no AI needed)
- *   3. headline   — one punchy sentence summary
+ * GET  /api/story?id=12345   → AI match narrative + facts (unchanged behaviour)
+ * POST /api/story?action=linkedin
+ *        body { matchId | home,away,homeScore,awayScore,stage,facts }
+ *      → posts match result to LinkedIn (manual or auto-detect mode)
  *
- * Cached 24h per match ID — stories don't change after full time.
- * The Claude call is the expensive part; caching means it only happens once.
- *
- * Security: ANTHROPIC_API_KEY stays server-side, never reaches the browser.
+ * Both share this file purely to conserve serverless function slots —
+ * they are otherwise unrelated features.
  */
 export const config = { runtime: "nodejs" };
 
 export default async function handler(req, res) {
+  // ── POST: LinkedIn posting ─────────────────────────────────────────────
+  if (req.method === "POST" && req.query?.action === "linkedin") {
+    return handleLinkedInPost(req, res);
+  }
+
+  // ── GET: AI match story (original behaviour) ───────────────────────────
   const id = req.query?.id;
   if (!id) return res.status(400).json({ error: "Missing ?id=" });
 
   const key = `wc:story:${id}`;
   try {
-    // Serve from cache if available — stories don't change after FT
     const cached = await cacheGet(key);
     if (cached) {
       res.setHeader("Cache-Control", "public, s-maxage=3600");
       return res.status(200).json(cached);
     }
 
-    // Fetch match detail — we need events, scores, lineups
     const match = await fetchMatchDetail(id);
 
-    // Only generate for finished matches
     if (match.status !== "FINISHED") {
       return res.status(200).json({
         headline: null, narrative: null,
@@ -41,10 +43,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── 1. Compute fact bullets from match data (no AI needed) ──────────────
     const facts = computeFacts(match);
 
-    // ── 2. Generate AI narrative via Claude API ──────────────────────────────
     let narrative = null;
     let headline = null;
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -68,7 +68,6 @@ export default async function handler(req, res) {
         if (aiRes.ok) {
           const aiData = await aiRes.json();
           const raw = aiData.content?.[0]?.text || "";
-          // Parse the structured response
           const hlMatch = raw.match(/HEADLINE:\s*(.+)/);
           const narMatch = raw.match(/STORY:\s*([\s\S]+)/);
           headline = hlMatch ? hlMatch[1].trim() : null;
@@ -76,7 +75,6 @@ export default async function handler(req, res) {
         }
       } catch (e) {
         console.error("Claude API error:", e.message);
-        // Fall through — we still return facts even without narrative
       }
     }
 
@@ -91,13 +89,109 @@ export default async function handler(req, res) {
       generatedAt: new Date().toISOString(),
     };
 
-    // Cache 24h — story is final after FT
     await cacheSet(key, result, 86400);
     res.setHeader("Cache-Control", "public, s-maxage=3600");
     return res.status(200).json(result);
   } catch (e) {
     console.error("story endpoint error:", e.message);
     return res.status(503).json({ error: "Story unavailable", detail: e.message });
+  }
+}
+
+/* ── LinkedIn posting handler ────────────────────────────────────────────── */
+async function handleLinkedInPost(req, res) {
+  const auth = req.headers.authorization || "";
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!process.env.LINKEDIN_ACCESS_TOKEN || (!process.env.LINKEDIN_PERSON_ID && !process.env.LINKEDIN_ORG_ID)) {
+    return res.status(503).json({ error: "LinkedIn not configured. Add LINKEDIN_ACCESS_TOKEN and LINKEDIN_PERSON_ID (or LINKEDIN_ORG_ID) to Vercel env vars." });
+  }
+
+  try {
+    const body = req.body || {};
+    const posted = [];
+    const skipped = [];
+
+    // Manual post for a specific match
+    if (body.matchId || (body.home && body.away)) {
+      const dedupeKey = `wc:linkedin:posted:${body.matchId || body.home + body.away}`;
+      const alreadyPosted = await cacheGet(dedupeKey).catch(() => null);
+      if (alreadyPosted) return res.status(200).json({ ok: true, skipped: ["already posted"] });
+
+      let facts = body.facts || [];
+      if (body.matchId && facts.length === 0) {
+        try {
+          const d = await fetchMatchDetail(body.matchId);
+          const goals = d.events.filter(e => e.type === "GOAL");
+          if (goals.length) facts.push(`Goals: ${goals.map(g => `${g.player} ${g.minute}'`).join(", ")}`);
+          const reds = d.events.filter(e => e.type === "RED");
+          if (reds.length) facts.push(`Red card: ${reds[0].player} (${reds[0].team})`);
+        } catch {}
+      }
+
+      const text = formatMatchPost({
+        home: body.home, away: body.away,
+        homeScore: body.homeScore ?? 0, awayScore: body.awayScore ?? 0,
+        facts, stage: body.stage
+      });
+
+      const result = await postToLinkedIn({ text });
+      await cacheSet(dedupeKey, result.postId, 604800);
+      return res.status(200).json({ ok: true, posted: [result] });
+    }
+
+    // Auto-detect recently finished matches
+    const today = await fetchLiveAndToday();
+    const finished = today.finishedToday;
+
+    for (const m of finished) {
+      const dedupeKey = `wc:linkedin:posted:${m.id}`;
+      const alreadyPosted = await cacheGet(dedupeKey).catch(() => null);
+      if (alreadyPosted) { skipped.push(m.id); continue; }
+
+      let facts = [];
+      try {
+        const d = await fetchMatchDetail(m.id);
+        const goals = d.events.filter(e => e.type === "GOAL");
+        if (goals.length) {
+          const scorers = {};
+          goals.forEach(g => { if (g.player) scorers[g.player] = (scorers[g.player] || 0) + 1; });
+          Object.entries(scorers).forEach(([p, c]) => {
+            facts.push(c > 1 ? `${p} (${c})` : p);
+          });
+          if (facts.length) facts[0] = "⚽ " + facts.join(", ");
+          facts = [facts[0]];
+        }
+        const reds = d.events.filter(e => e.type === "RED");
+        if (reds.length) facts.push(`🟥 ${reds[0].player} sent off (${reds[0].team})`);
+        const late = goals.filter(g => g.minute >= 85);
+        if (late.length) facts.push(`⏱ Late drama in the ${late[late.length - 1].minute}th minute`);
+      } catch {}
+
+      const text = formatMatchPost({
+        home: m.home.name,
+        away: m.away.name,
+        homeScore: m.home.score ?? 0,
+        awayScore: m.away.score ?? 0,
+        facts,
+        stage: m.stage?.replace(/_/g, " "),
+      });
+
+      try {
+        const result = await postToLinkedIn({ text });
+        await cacheSet(dedupeKey, result.postId, 604800);
+        posted.push({ match: `${m.home.name} vs ${m.away.name}`, ...result });
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {
+        skipped.push(`${m.home.name} vs ${m.away.name}: ${e.message}`);
+      }
+    }
+
+    return res.status(200).json({ ok: true, posted, skipped, total: finished.length });
+  } catch (e) {
+    console.error("LinkedIn post error:", e.message);
+    return res.status(500).json({ error: e.message });
   }
 }
 
