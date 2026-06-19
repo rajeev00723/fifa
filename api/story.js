@@ -9,8 +9,13 @@ import { postToLinkedIn, formatMatchPost } from "../lib/linkedin.js";
  * POST /api/story?action=linkedin
  *        body { matchId | home,away,homeScore,awayScore,stage,facts }
  *      → posts match result to LinkedIn (manual or auto-detect mode)
+ * GET  /api/story?action=highlights&matchId=12345&home=Brazil&away=France
+ *      → finds an official YouTube highlight video for a finished match.
+ *        Cached PERMANENTLY once found — YouTube Search API costs 100 quota
+ *        units per call (only 100 free searches/day), so we search once per
+ *        match ever, never re-search a match that already resolved.
  *
- * Both share this file purely to conserve serverless function slots —
+ * All three share this file purely to conserve serverless function slots —
  * they are otherwise unrelated features.
  */
 export const config = { runtime: "nodejs" };
@@ -19,6 +24,11 @@ export default async function handler(req, res) {
   // ── POST: LinkedIn posting ─────────────────────────────────────────────
   if (req.method === "POST" && req.query?.action === "linkedin") {
     return handleLinkedInPost(req, res);
+  }
+
+  // ── GET: YouTube highlight video lookup ─────────────────────────────────
+  if (req.query?.action === "highlights") {
+    return handleHighlightVideo(req, res);
   }
 
   // ── GET: AI match story (original behaviour) ───────────────────────────
@@ -314,4 +324,82 @@ Formations: ${m.home.name} ${hForm} vs ${m.away.name} ${aForm}
 Write EXACTLY in this format:
 HEADLINE: [One punchy sentence, max 12 words, no score in it]
 STORY: [Two short paragraphs. First: what happened tactically and how the goals fell. Second: the key talking point or turning moment. Factual, energetic, no invented stats. Max 120 words total. Do not mention the score — it's already shown.]`;
+}
+
+/* ── YouTube highlight video lookup ───────────────────────────────────────
+ * Searches YouTube once per match for an official highlights video, then
+ * caches the result FOREVER (no TTL) — a finished match's highlight video
+ * never needs to be re-searched. This is essential because YouTube's
+ * search.list endpoint costs 100 of our 10,000 daily quota units, meaning
+ * only ~100 searches/day are possible. Caching forever means each of the
+ * ~104 World Cup 2026 matches only ever costs one search, total.
+ *
+ * Prefers official FIFA / broadcaster channels by filtering for channel
+ * names containing "FIFA" first; falls back to the top relevance result
+ * if no official-looking channel appears in the first page.
+ */
+async function handleHighlightVideo(req, res) {
+  const matchId = req.query?.matchId;
+  const home = req.query?.home;
+  const away = req.query?.away;
+  if (!matchId || !home || !away) {
+    return res.status(400).json({ error: "Missing matchId, home, or away" });
+  }
+
+  const key = `wc:highlight-video:${matchId}`;
+  try {
+    const cached = await cacheGet(key);
+    if (cached) {
+      res.setHeader("Cache-Control", "public, s-maxage=86400");
+      return res.status(200).json(cached);
+    }
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: "YouTube highlights not configured. Add YOUTUBE_API_KEY to Vercel env vars.", video: null });
+    }
+
+    const query = encodeURIComponent(`${home} vs ${away} highlights FIFA World Cup 2026`);
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${query}&key=${apiKey}`;
+
+    const ytRes = await fetch(url);
+    if (!ytRes.ok) {
+      const errBody = await ytRes.text().catch(() => "");
+      throw new Error(`YouTube API ${ytRes.status}: ${errBody.slice(0, 200)}`);
+    }
+    const ytData = await ytRes.json();
+    const items = ytData.items || [];
+
+    if (items.length === 0) {
+      const empty = { video: null, searchedAt: new Date().toISOString() };
+      await cacheSet(key, empty, 86400); // cache the "nothing found" for a day, not forever — might appear later
+      return res.status(200).json(empty);
+    }
+
+    // Prefer an official-looking channel (FIFA, major broadcasters) if present
+    const officialMarkers = ["fifa", "fox sports", "bbc sport", "espn", "telemundo", "bein sports"];
+    const best = items.find(it =>
+      officialMarkers.some(marker => (it.snippet.channelTitle || "").toLowerCase().includes(marker))
+    ) || items[0];
+
+    const result = {
+      video: {
+        videoId: best.id.videoId,
+        title: best.snippet.title,
+        channelTitle: best.snippet.channelTitle,
+        thumbnail: best.snippet.thumbnails?.medium?.url || best.snippet.thumbnails?.default?.url,
+        url: `https://www.youtube.com/watch?v=${best.id.videoId}`,
+        embedUrl: `https://www.youtube.com/embed/${best.id.videoId}`,
+      },
+      searchedAt: new Date().toISOString(),
+    };
+
+    // Cache FOREVER (no TTL) — a found video for a finished match never changes
+    await cacheSet(key, result, 0);
+    res.setHeader("Cache-Control", "public, s-maxage=86400");
+    return res.status(200).json(result);
+  } catch (e) {
+    console.error("highlight video lookup error:", e.message);
+    return res.status(503).json({ error: "Highlight video unavailable", detail: e.message, video: null });
+  }
 }

@@ -413,6 +413,10 @@ function MatchModal({id,onClose}){
           {(isLive||isFinished)&&d.events?.length>0&&
             <LiveMomentum matchId={id} homeTeam={d.home?.name} awayTeam={d.away?.name}/>}
 
+          {/* Official highlight video — finished matches only */}
+          {isFinished&&d.home?.name&&d.away?.name&&
+            <MatchHighlightVideo matchId={id} homeTeam={d.home.name} awayTeam={d.away.name}/>}
+
           {/* ── MATCH STORY ─────────────────────────────────────── */}
           {isFinished&&<div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${C.line}`}}>
             <div style={{font:`600 11px ${mono}`,color:C.gold,letterSpacing:".12em",marginBottom:12}}>📰 MATCH STORY</div>
@@ -2410,6 +2414,86 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
 }
 
 /* ===================== PAST RESULTS ===================== */
+/* ===================== HIGHLIGHTS TAB ===================== */
+// Grid of recent finished matches with official YouTube highlight videos.
+// Videos are fetched lazily per-card (only when the card is visible) to
+// stay well within the 100-searches/day YouTube API quota — most of those
+// searches resolve once and are cached forever server-side anyway.
+function HighlightCard({m,onOpenMatch}){
+  const [video,setVideo]=useState(undefined);
+  const [playing,setPlaying]=useState(false);
+  const ref=useRef(null);
+  const fetched=useRef(false);
+
+  useEffect(()=>{
+    if(fetched.current) return;
+    const obs=new IntersectionObserver((entries)=>{
+      if(entries[0].isIntersecting && !fetched.current){
+        fetched.current=true;
+        fetch(`/api/story?action=highlights&matchId=${m.id}&home=${encodeURIComponent(m.home.name)}&away=${encodeURIComponent(m.away.name)}`)
+          .then(r=>r.json()).then(d=>setVideo(d.video||null)).catch(()=>setVideo(null));
+        obs.disconnect();
+      }
+    },{threshold:0.1});
+    if(ref.current) obs.observe(ref.current);
+    return ()=>obs.disconnect();
+  },[m.id]);
+
+  return <div ref={ref} style={{borderRadius:8,overflow:"hidden",border:`1px solid ${C.line}`,background:C.panel}}>
+    {video===undefined&&<Skeleton height={150} radius={0}/>}
+    {video===null&&<div onClick={()=>onOpenMatch&&onOpenMatch(m.id)} style={{height:150,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexDirection:"column",gap:6}}>
+      <span style={{fontSize:22}}>🎬</span>
+      <span style={{font:`11px ${mono}`,color:C.mute}}>No video yet — view match</span>
+    </div>}
+    {video&&!playing&&<div onClick={()=>setPlaying(true)} style={{position:"relative",cursor:"pointer",height:150}}>
+      <img src={video.thumbnail} alt={video.title} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:42,height:42,borderRadius:"50%",background:"rgba(217,84,63,.9)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{width:0,height:0,borderTop:"7px solid transparent",borderBottom:"7px solid transparent",borderLeft:"12px solid white",marginLeft:2}}/>
+        </div>
+      </div>
+    </div>}
+    {video&&playing&&<div style={{position:"relative",paddingTop:"56.25%"}}>
+      <iframe src={video.embedUrl+"?autoplay=1"} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={video.title}/>
+    </div>}
+    <div style={{padding:"10px 12px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+        <span style={{font:`600 13px ${display}`,color:C.chalk}}>{m.home.name} {m.home.score}–{m.away.score} {m.away.name}</span>
+      </div>
+      {video&&<div style={{font:`10px ${mono}`,color:C.mute}}>{video.channelTitle}</div>}
+      <button onClick={()=>onOpenMatch&&onOpenMatch(m.id)} style={{font:`10px ${mono}`,color:C.gold,background:"none",border:"none",cursor:"pointer",padding:"6px 0 0"}}>Match detail →</button>
+    </div>
+  </div>;
+}
+
+function Highlights({onOpenMatch}){
+  const [data,setData]=useState(null); const [err,setErr]=useState(null);
+  useEffect(()=>{
+    fetch("/api/results?days=14")
+      .then(r=>r.json())
+      .then(j=>{if(j.error)throw new Error(j.detail||j.error);setData(j);})
+      .catch(e=>setErr(e.message));
+  },[]);
+
+  const allMatches=data?Object.keys(data.groups).sort((a,b)=>b.localeCompare(a)).flatMap(k=>data.groups[k]):[];
+
+  return <div>
+    <H2 eyebrow="Watch — Official Video" title="Match highlights"/>
+    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:560}}>
+      Official highlight videos from FIFA and broadcast partners, linked via YouTube. Most recent finished matches first.
+    </p>
+    {err&&<Panel style={{borderColor:"rgba(217,84,63,.35)"}}><span style={{color:C.red,fontFamily:mono}}>{err}</span></Panel>}
+    {!data&&!err&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>
+      <Skeleton height={220} radius={8}/><Skeleton height={220} radius={8}/><Skeleton height={220} radius={8}/>
+    </div>}
+    {allMatches.length===0&&data&&<Empty>No finished matches in the last 14 days yet.</Empty>}
+    {allMatches.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>
+      {allMatches.slice(0,24).map(m=><HighlightCard key={m.id} m={m} onOpenMatch={onOpenMatch}/>)}
+    </div>}
+  </div>;
+}
+
 function Results({onOpenMatch}){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
   const [days,setDays]=useState(7);
@@ -2964,6 +3048,56 @@ function BracketSimulator(){
   </div>;
 }
 
+/* ===================== MATCH HIGHLIGHT VIDEO ===================== */
+// Looks up an official YouTube highlight video for a finished match.
+// Searched once ever per match (server caches forever) — see api/story.js
+// for the quota-conscious reasoning.
+function MatchHighlightVideo({matchId, homeTeam, awayTeam}){
+  const [video,setVideo]=useState(undefined); // undefined=loading, null=none found
+  const [playing,setPlaying]=useState(false);
+
+  useEffect(()=>{
+    if(!matchId||!homeTeam||!awayTeam) return;
+    fetch(`/api/story?action=highlights&matchId=${matchId}&home=${encodeURIComponent(homeTeam)}&away=${encodeURIComponent(awayTeam)}`)
+      .then(r=>r.json()).then(d=>setVideo(d.video||null)).catch(()=>setVideo(null));
+  },[matchId,homeTeam,awayTeam]);
+
+  if(video===undefined) return <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${C.line}`}}>
+    <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>HIGHLIGHTS</div>
+    <Skeleton height={160} radius={6}/>
+  </div>;
+  if(video===null) return null; // no video found — fail silently, not a broken feature
+
+  return <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${C.line}`}}>
+    <div style={{font:`600 10px ${mono}`,color:C.mute,letterSpacing:".1em",marginBottom:8}}>📺 HIGHLIGHTS</div>
+    {!playing
+      ?<div onClick={()=>setPlaying(true)} style={{position:"relative",cursor:"pointer",borderRadius:6,overflow:"hidden",border:`1px solid ${C.line}`}}>
+        <img src={video.thumbnail} alt={video.title} style={{width:"100%",display:"block"}}/>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(217,84,63,.9)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 16px rgba(0,0,0,.4)"}}>
+            <div style={{width:0,height:0,borderTop:"10px solid transparent",borderBottom:"10px solid transparent",borderLeft:"16px solid white",marginLeft:3}}/>
+          </div>
+        </div>
+        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"24px 12px 8px",background:"linear-gradient(transparent,rgba(0,0,0,.8))"}}>
+          <div style={{font:`600 12px/1.3 ${display}`,color:"#fff"}}>{video.title}</div>
+          <div style={{font:`10px ${mono}`,color:"rgba(255,255,255,.7)",marginTop:2}}>{video.channelTitle}</div>
+        </div>
+      </div>
+      :<div style={{position:"relative",paddingTop:"56.25%",borderRadius:6,overflow:"hidden"}}>
+        <iframe
+          src={video.embedUrl+"?autoplay=1"}
+          style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title={video.title}
+        />
+      </div>}
+    <a href={video.url} target="_blank" rel="noopener noreferrer" style={{font:`11px ${mono}`,color:C.mute,display:"block",marginTop:6}}>
+      Watch on YouTube ↗
+    </a>
+  </div>;
+}
+
 /* ===================== LIVE MOMENTUM CHART ===================== */
 function LiveMomentum({matchId,homeTeam,awayTeam}){
   const [events,setEvents]=useState(null);
@@ -3124,7 +3258,7 @@ function PlayerStockMarket(){
   </div>;
 }
 
-const NAV=[["Home",null],["Live",Live],["News",NewsFeed],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Vs Mode",VsMode],["Trivia",DailyTrivia],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["Bracket",BracketSimulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Stock Market",PlayerStockMarket],["Alerts",Alerts]];
+const NAV=[["Home",null],["Live",Live],["News",NewsFeed],["Highlights",Highlights],["Results",Results],["Standings",Standings],["Scorer Race",ScorerRace],["Search",Search],["Vs Mode",VsMode],["Trivia",DailyTrivia],["Teams",TeamIntelligence],["Scores",IntelligenceScores],["Coaches",CoachAnalytics],["Coach Ranking",CoachImpact],["Upsets",Upsets],["Stories",Stories],["Knowledge Graph",KnowledgeGraph],["Nation Evolution",NationEvolution],["Qual Odds",QualOdds],["Path to Final",Simulator],["Bracket",BracketSimulator],["History",History],["Team Predictor",TeamPredictor],["Golden Boot",PlayerPredictor],["Stock Market",PlayerStockMarket],["Alerts",Alerts]];
 
 // Grouped nav: section → [tab labels]. Order matches NAV array labels exactly.
 /* ===================== FOOTER VISITS ===================== */
@@ -3197,7 +3331,7 @@ function FooterVisits(){
 }
 
 const NAV_GROUPS=[
-  {label:"LIVE",  icon:"●", tabs:["Live","News","Results","Standings","Scorer Race"]},
+  {label:"LIVE",  icon:"●", tabs:["Live","News","Highlights","Results","Standings","Scorer Race"]},
   {label:"INTEL", icon:"◈", tabs:["Search","Vs Mode","Teams","Scores","Coaches","Coach Ranking","Upsets","Stories","Knowledge Graph","Nation Evolution"]},
   {label:"PREDICT",icon:"◎",tabs:["Qual Odds","Path to Final","Bracket","Team Predictor","Golden Boot","Stock Market"]},
   {label:"MORE",  icon:"⊞", tabs:["Trivia","History","Alerts"]},
