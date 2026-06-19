@@ -1925,13 +1925,74 @@ function LiveStatsWidget({onNavigate}){
 // Surfaces the single most newsworthy storyline from today's finished matches.
 // Built ENTIRELY from real match event data (goals/cards with minute + player),
 // never from unstructured news text — so we never risk inventing a stat.
+/* ===================== TOURNAMENT HIGHLIGHTS ===================== */
+// Best storylines from the WHOLE tournament so far (hat-tricks, routs),
+// not just today. Keeps moments like Messi's hat-trick visible even days
+// after it happened, instead of disappearing once "today" moves on.
+function TournamentHighlights({onOpenMatch}){
+  const [highlights,setHighlights]=useState(null);
+  const [idx,setIdx]=useState(0);
+
+  useEffect(()=>{
+    fetch("/api/results?highlights=1").then(r=>r.json()).then(d=>{
+      setHighlights(d.highlights||[]);
+    }).catch(()=>setHighlights([]));
+  },[]);
+
+  if(highlights===null) return null; // still loading, don't flash empty state
+  if(highlights.length===0) return null;
+
+  const TYPE_STYLE={
+    hattrick:{accent:"#e8b84b", label:"HAT-TRICK"},
+    brace:   {accent:"#e8b84b", label:"BRACE"},
+    rout:    {accent:"#d9543f", label:"ROUT"},
+  };
+  const h=highlights[idx];
+  const ts=TYPE_STYLE[h.type]||TYPE_STYLE.hattrick;
+
+  return <div style={{maxWidth:680,margin:"0 auto 20px"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+      <div style={{font:`600 9px ${mono}`,color:C.mute,letterSpacing:".14em"}}>TOURNAMENT HIGHLIGHTS</div>
+      {highlights.length>1&&<div style={{font:`10px ${mono}`,color:C.mute}}>{idx+1} / {highlights.length}</div>}
+    </div>
+    <div onClick={()=>onOpenMatch&&onOpenMatch(h.matchId)} style={{
+      display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:8,cursor:"pointer",
+      background:`${ts.accent}10`,border:`1px solid ${ts.accent}55`,transition:"background .15s",
+    }}
+    onMouseEnter={e=>e.currentTarget.style.background=`${ts.accent}18`}
+    onMouseLeave={e=>e.currentTarget.style.background=`${ts.accent}10`}>
+      <span style={{fontSize:22,flexShrink:0}}>{h.icon}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <span style={{font:`700 9px ${mono}`,color:ts.accent,letterSpacing:".12em",marginRight:8}}>{ts.label}</span>
+        <span style={{font:`600 13px/1.4 ${display}`,color:C.chalk}}>{h.text}</span>
+      </div>
+      {highlights.length>1&&<div style={{display:"flex",gap:4,flexShrink:0}}>
+        <button onClick={e=>{e.stopPropagation();setIdx(i=>(i-1+highlights.length)%highlights.length);}}
+          style={{width:22,height:22,borderRadius:"50%",border:`1px solid ${C.line}`,background:"transparent",color:C.mute,cursor:"pointer",font:`12px ${mono}`}}>‹</button>
+        <button onClick={e=>{e.stopPropagation();setIdx(i=>(i+1)%highlights.length);}}
+          style={{width:22,height:22,borderRadius:"50%",border:`1px solid ${C.line}`,background:"transparent",color:C.mute,cursor:"pointer",font:`12px ${mono}`}}>›</button>
+      </div>}
+    </div>
+  </div>;
+}
+
 function TodayHighlight({onOpenMatch}){
   const [highlight,setHighlight]=useState(null);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
     fetch("/api/live").then(r=>r.json()).then(async d=>{
-      const finished=d.finishedToday||[];
+      // finishedToday spans a rolling 2-day UTC window (for timezone safety
+      // elsewhere in the app) — but a HIGHLIGHT should only ever be about
+      // something that actually happened recently. Filter to matches whose
+      // kickoff was within the last 18 hours, which comfortably covers a
+      // full match + stoppage time while excluding yesterday's results.
+      const RECENT_MS=18*3600*1000;
+      const now=Date.now();
+      const finished=(d.finishedToday||[]).filter(m=>{
+        const kicked=new Date(m.utcKickoff).getTime();
+        return !isNaN(kicked) && (now-kicked)<=RECENT_MS;
+      });
       if(finished.length===0){ setLoading(false); return; }
 
       // Fetch match detail (goal scorers) for each finished match, in parallel
@@ -2327,6 +2388,9 @@ function Homepage({onNavigate, onTrivia, onOpenMatch}){
 
     {/* TODAY'S HIGHLIGHT — eye-catching real-data banner */}
     <TodayHighlight onOpenMatch={onOpenMatch}/>
+
+    {/* TOURNAMENT HIGHLIGHTS — best moments from the whole tournament so far */}
+    <TournamentHighlights onOpenMatch={onOpenMatch}/>
 
     {/* AI PREDICTOR WIDGET */}
     <StickyPredictor onNavigate={onNavigate}/>
