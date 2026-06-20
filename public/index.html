@@ -641,7 +641,34 @@ function SquadModal({id,onClose}){
 /* ===================== STANDINGS + FORM ===================== */
 function Standings({onOpenTeam}){
   const [data,setData]=useState(null); const [err,setErr]=useState(null);
+  const [fixtures,setFixtures]=useState(null); // {groupName: [{home,away,homeScore,awayScore,utcKickoff}]}
   useEffect(()=>{ fetch("/api/standings").then(r=>r.json()).then(setData).catch(e=>setErr(e.message)); },[]);
+  useEffect(()=>{
+    fetch("/api/results?days=30").then(r=>r.json()).then(j=>{
+      if(j.error) return;
+      const byGroup={};
+      Object.values(j.groups||{}).flat().forEach(m=>{
+        if(!m.group||m.status!=="FINISHED") return;
+        if(!byGroup[m.group]) byGroup[m.group]=[];
+        byGroup[m.group].push(m);
+      });
+      // Oldest first within each group, so the strip reads top-to-bottom chronologically
+      Object.values(byGroup).forEach(arr=>arr.sort((a,b)=>new Date(a.utcKickoff)-new Date(b.utcKickoff)));
+      setFixtures(byGroup);
+    }).catch(()=>setFixtures({}));
+  },[]);
+
+  // Rotating accent colour per group — mirrors the physical bracket-board style
+  // of giving each group its own colour band for quick visual scanning.
+  const GROUP_COLOURS=["#3b82d4","#7c5cdb","#3fae6f","#22b8b0","#d9543f","#e8b84b","#dd5fa8","#5fa8dd","#8a9a3f","#c97a3f","#5fc9a8","#9a6fdd"];
+  const colourFor=(idx)=>GROUP_COLOURS[idx%GROUP_COLOURS.length];
+
+  // Short code helper for the fixture strip (e.g. "Belgium" -> "BEL")
+  const shortCode=(name)=>{
+    const overrides={"South Korea":"KOR","South Africa":"SAF","Saudi Arabia":"SAU","New Zealand":"NZL","Czechia":"CZE","Bosnia and Herzegovina":"BOS","DR Congo":"DRC","Ivory Coast":"CIV","United States":"USA","Cape Verde":"CPV"};
+    if(overrides[name]) return overrides[name];
+    return (name||"???").slice(0,3).toUpperCase();
+  };
 
   // Enhanced pip: lettered badge with colour + letter for accessibility
   const Pip=({type})=>{
@@ -668,13 +695,28 @@ function Standings({onOpenTeam}){
     return {matchesPlayed, totalGroupGames};
   })():null;
 
-  const GroupTable=({g})=>(
-    <div style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:4,overflow:"hidden"}}>
-      {/* group header */}
-      <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.line}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(232,184,75,.04)"}}>
-        <div style={{font:`700 10px ${mono}`,color:C.gold,letterSpacing:".3em",borderLeft:`2px solid ${C.gold}`,paddingLeft:8}}>{g.group?.replace("GROUP ","GRP ")}</div>
+  const GroupTable=({g,idx})=>{
+    const accent=colourFor(idx);
+    const groupFixtures=fixtures?.[g.group]||[];
+    return (
+    <div style={{background:C.panel,border:`1px solid ${C.line}`,borderRadius:6,overflow:"hidden"}}>
+      {/* group header — coloured accent bar like the physical bracket board */}
+      <div style={{padding:"10px 14px",borderBottom:`2px solid ${accent}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:`${accent}14`}}>
+        <div style={{font:`800 11px ${mono}`,color:accent,letterSpacing:".22em"}}>{g.group?.replace("GROUP ","GROUP ")}</div>
         <div style={{font:`10px ${mono}`,color:C.mute}}>P&nbsp;W&nbsp;D&nbsp;L</div>
       </div>
+
+      {/* Fixture history strip — compact played-match results, photo-board style */}
+      {groupFixtures.length>0&&<div style={{padding:"8px 10px",background:"rgba(255,255,255,.015)",borderBottom:`1px solid ${C.line}`}}>
+        {groupFixtures.map((m,fi)=>(
+          <div key={fi} style={{display:"grid",gridTemplateColumns:"1fr 22px 1fr",gap:6,alignItems:"center",padding:"3px 4px",fontSize:11}}>
+            <span style={{font:`600 11px ${mono}`,color:m.home.score>m.away.score?C.chalk:C.mute,textAlign:"right"}}>{shortCode(m.home.name)} {m.home.score}</span>
+            <span style={{textAlign:"center",color:C.mute,fontSize:9}}>—</span>
+            <span style={{font:`600 11px ${mono}`,color:m.away.score>m.home.score?C.chalk:C.mute}}>{m.away.score} {shortCode(m.away.name)}</span>
+          </div>
+        ))}
+      </div>}
+
       {/* col headers */}
       <div style={{display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,padding:"5px 14px",font:`500 9px ${mono}`,letterSpacing:".1em",color:C.mute,textTransform:"uppercase"}}>
         <span/><span>Team</span><span>Form</span><span style={{textAlign:"center"}}><Info text="Goal Difference: goals scored minus goals conceded. Used to separate teams level on points." label="GD"/></span><span style={{textAlign:"center"}}>Pts</span>
@@ -691,14 +733,14 @@ function Standings({onOpenTeam}){
               display:"grid",gridTemplateColumns:"20px 1fr 56px 26px 32px",gap:6,
               padding:"9px 14px",alignItems:"center",cursor:hasSquad?"pointer":"default",
               borderTop:`1px solid ${C.line}`,
-              borderLeft:`3px solid ${advancing?C.grass:"transparent"}`,
+              borderLeft:`3px solid ${advancing?accent:"transparent"}`,
               transition:"background 120ms",
               background:"transparent",
             }}
             onMouseEnter={e=>{ if(hasSquad) e.currentTarget.style.background="rgba(255,255,255,.03)"; }}
             onMouseLeave={e=>e.currentTarget.style.background="transparent"}
           >
-            <span style={{font:`700 11px ${mono}`,color:advancing?C.grass:C.mute}}>{r.position}</span>
+            <span style={{font:`700 11px ${mono}`,color:advancing?accent:C.mute}}>{r.position}</span>
             <span style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
               <Crest src={r.crest} size={16}/>
               <span style={{font:`600 12px ${display}`,color:advancing?C.chalk:C.mute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.team}</span>
@@ -710,7 +752,8 @@ function Standings({onOpenTeam}){
         );
       })}
     </div>
-  );
+    );
+  };
 
   return <div>
     <H2 eyebrow="Live — Group Stage" title="Standings & form"/>
@@ -735,7 +778,7 @@ function Standings({onOpenTeam}){
 
     {/* 3-column grid on desktop, 1 on mobile */}
     {data && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
-      {data.groups.map(g=><GroupTable key={g.group} g={g}/>)}
+      {data.groups.map((g,idx)=><GroupTable key={g.group} g={g} idx={idx}/>)}
     </div>}
 
     <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16,display:"flex",gap:16,flexWrap:"wrap"}}>
@@ -2981,31 +3024,77 @@ function BracketSimulator(){
     if(champion) navigator.clipboard?.writeText(msg).catch(()=>{});
   };
 
+  // ── Bracket geometry for the connected-tree visual ──────────────────────
+  // Fixed pixel layout so we can draw real SVG connector lines between
+  // matches across rounds, instead of relying on flexbox gaps to "look"
+  // connected. Box height + vertical gaps are tuned so connector midpoints
+  // land exactly between the two feeder matches of the next round.
+  const BOX_H=50, BOX_W=150, COL_GAP=64, ROW_GAP=14;
+  const roundX=(ri)=>ri*(BOX_W+COL_GAP);
+  const matchY=(ri,mi)=>{
+    // Each round doubles the vertical spacing of the previous one, so a
+    // round's matches sit centred between their two feeder matches.
+    const spacing=(BOX_H+ROW_GAP)*Math.pow(2,ri);
+    const offset=spacing/2-(BOX_H+ROW_GAP)/2;
+    return offset+mi*spacing;
+  };
+  const totalHeight=matchY(0,15)+BOX_H+20;
+  const totalWidth=roundX(4)+BOX_W+20;
+
   const Matchup=({roundIdx,matchIdx})=>{
     const m=bracket[roundIdx]?.[matchIdx];
-    if(!m||(!m.home&&!m.away)) return <div style={{height:52,border:`1px dashed ${C.line}`,borderRadius:4,margin:"4px 0"}}/>;
+    if(!m||(!m.home&&!m.away)) return <div style={{
+      position:"absolute",left:roundX(roundIdx),top:matchY(roundIdx,matchIdx),
+      width:BOX_W,height:BOX_H,border:`1px dashed ${C.line}`,borderRadius:4}}/>;
     const {winA,winB}=m.home&&m.away?M.matchOutcome(m.home,m.away):{winA:.5,winB:.5};
     const favPct=Math.round(Math.max(winA,winB)*100);
     const fav=winA>winB?m.home:m.away;
-    return <div style={{margin:"4px 0",borderRadius:4,border:`1px solid ${m.winner?C.gold:C.line}`,overflow:"hidden"}}>
+    return <div style={{
+      position:"absolute",left:roundX(roundIdx),top:matchY(roundIdx,matchIdx),
+      width:BOX_W,height:BOX_H,borderRadius:5,border:`1.5px solid ${m.winner?C.gold:C.line}`,
+      overflow:"hidden",background:C.panel,boxShadow:m.winner?"0 0 0 1px rgba(232,184,75,.25)":"none"}}>
       {[m.home,m.away].map((team,ti)=>{
-        if(!team) return <div key={ti} style={{padding:"6px 8px",background:C.pitch2,borderBottom:ti===0?`1px solid ${C.line}`:"none"}}>
-          <span style={{font:`11px ${mono}`,color:C.mute}}>TBD</span>
+        if(!team) return <div key={ti} style={{padding:"5px 8px",background:C.pitch2,height:BOX_H/2,display:"flex",alignItems:"center",borderBottom:ti===0?`1px solid ${C.line}`:"none"}}>
+          <span style={{font:`10px ${mono}`,color:C.mute}}>TBD</span>
         </div>;
         const isWinner=m.winner===team;
         const isLoser=m.winner&&m.winner!==team;
         return <div key={ti} onClick={()=>m.home&&m.away&&pickWinner(roundIdx,matchIdx,team)}
-          style={{padding:"6px 8px",background:isWinner?"rgba(232,184,75,.12)":C.pitch2,
+          style={{padding:"5px 8px",height:BOX_H/2,background:isWinner?"rgba(232,184,75,.14)":C.pitch2,
             borderBottom:ti===0?`1px solid ${C.line}`:"none",
             cursor:m.home&&m.away?"pointer":"default",
-            opacity:isLoser?.45:1,transition:"all .15s",
-            display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
-          <span style={{font:`600 12px ${display}`,color:isWinner?C.gold:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>{team}</span>
-          {team===fav&&m.home&&m.away&&!m.winner&&<span style={{font:`9px ${mono}`,color:C.gold,flexShrink:0}}>{favPct}%</span>}
-          {isWinner&&<span style={{color:C.gold,flexShrink:0,fontSize:10}}>✓</span>}
+            opacity:isLoser?.4:1,transition:"all .15s",
+            display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}}>
+          <span style={{font:`600 11px ${display}`,color:isWinner?C.gold:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>{flagOf(team)} {team}</span>
+          {team===fav&&m.home&&m.away&&!m.winner&&<span style={{font:`8px ${mono}`,color:C.gold,flexShrink:0}}>{favPct}%</span>}
+          {isWinner&&<span style={{color:C.gold,flexShrink:0,fontSize:9}}>✓</span>}
         </div>;
       })}
     </div>;
+  };
+
+  // SVG connector lines — drawn between each match's right edge and the
+  // midpoint feeding into the next round's match. Mirrors the bracket-board
+  // photo: a horizontal stub out, vertical join, horizontal stub in.
+  const Connectors=({roundIdx})=>{
+    const count=Math.pow(2,3-roundIdx);
+    const lines=[];
+    for(let mi=0;mi<count;mi+=2){
+      const y1=matchY(roundIdx,mi)+BOX_H/2;
+      const y2=matchY(roundIdx,mi+1)+BOX_H/2;
+      const yMid=(y1+y2)/2;
+      const x1=roundX(roundIdx)+BOX_W;
+      const x2=x1+COL_GAP/2;
+      lines.push(
+        <g key={mi} stroke={C.line} strokeWidth="1.5" fill="none">
+          <line x1={x1} y1={y1} x2={x2} y2={y1}/>
+          <line x1={x1} y1={y2} x2={x2} y2={y2}/>
+          <line x1={x2} y1={y1} x2={x2} y2={y2}/>
+          <line x1={x2} y1={yMid} x2={x2+COL_GAP/2} y2={yMid}/>
+        </g>
+      );
+    }
+    return <>{lines}</>;
   };
 
   return <div>
@@ -3030,23 +3119,28 @@ function BracketSimulator(){
       <div style={{font:`800 22px ${display}`,color:C.chalk}}>{champion}</div></div>
     </div>}
 
-    {/* Bracket grid — horizontal scroll on mobile */}
-    <div style={{overflowX:"auto",paddingBottom:8}}>
-      <div style={{display:"flex",gap:12,minWidth:800,alignItems:"flex-start"}}>
+    {/* Connected bracket tree — fixed-coordinate layout with real SVG connector lines */}
+    <div style={{overflowX:"auto",paddingBottom:12,paddingTop:30}}>
+      <div style={{position:"relative",width:totalWidth,height:totalHeight,minWidth:totalWidth}}>
+        {/* Round labels */}
         {ROUNDS.map((label,ri)=>(
-          <div key={ri} style={{flex:1,minWidth:ri===0?140:120}}>
-            <div style={{font:`600 10px ${mono}`,color:C.gold,letterSpacing:".1em",marginBottom:8,textAlign:"center"}}>{label}</div>
-            <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",gap:ri===0?2:ri===1?8:ri===2?20:ri===3?52:0}}>
-              {Array.from({length:Math.pow(2,3-ri)}).map((_,mi)=>(
-                <Matchup key={mi} roundIdx={ri} matchIdx={mi}/>
-              ))}
-            </div>
-          </div>
+          <div key={ri} style={{position:"absolute",left:roundX(ri),top:-26,width:BOX_W,
+            font:`700 9px ${mono}`,color:C.gold,letterSpacing:".1em",textAlign:"center"}}>{label}</div>
         ))}
+        {/* Connector lines — SVG layer sits behind the match boxes */}
+        <svg width={totalWidth} height={totalHeight} style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
+          <Connectors roundIdx={0}/><Connectors roundIdx={1}/><Connectors roundIdx={2}/><Connectors roundIdx={3}/>
+        </svg>
+        {/* Match boxes — one absolutely-positioned box per round per slot */}
+        {ROUNDS.map((_,ri)=>
+          Array.from({length:Math.pow(2,3-ri)}).map((_,mi)=>(
+            <Matchup key={`${ri}-${mi}`} roundIdx={ri} matchIdx={mi}/>
+          ))
+        )}
       </div>
     </div>
     <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16}}>
-      Click any team name to pick them as the winner. AI Simulate uses Elo win probabilities to auto-pick each match.
+      Click any team name to pick them as the winner. AI Simulate uses Elo win probabilities to auto-pick each match. Scroll horizontally to see the full bracket on smaller screens.
     </div>
   </div>;
 }
