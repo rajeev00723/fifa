@@ -3024,33 +3024,66 @@ function BracketSimulator(){
     if(champion) navigator.clipboard?.writeText(msg).catch(()=>{});
   };
 
-  // ── Bracket geometry for the connected-tree visual ──────────────────────
-  // Fixed pixel layout so we can draw real SVG connector lines between
-  // matches across rounds, instead of relying on flexbox gaps to "look"
-  // connected. Box height + vertical gaps are tuned so connector midpoints
-  // land exactly between the two feeder matches of the next round.
-  const BOX_H=50, BOX_W=150, COL_GAP=64, ROW_GAP=14;
-  const roundX=(ri)=>ri*(BOX_W+COL_GAP);
-  const matchY=(ri,mi)=>{
-    // Each round doubles the vertical spacing of the previous one, so a
-    // round's matches sit centred between their two feeder matches.
+  // ── Bracket geometry: MIRROR layout ──────────────────────────────────────
+  // Matches 0-7 (left half of the draw) grow rightward toward the centre.
+  // Matches 8-15 (right half) are mirrored, growing leftward toward the
+  // centre. Round of 16 / QF / SF on each side feed into a single centred
+  // Final box — same visual grammar as a physical bracket-board poster.
+  const BOX_H=50, BOX_W=148, COL_GAP=56, ROW_GAP=12, CENTER_GAP=70;
+
+  // Which side of the draw a Round-of-32 match index belongs to
+  const sideOf=(mi)=>mi<8?"left":"right";
+  // Local index within that side, 0-7
+  const localIdx=(mi)=>mi<8?mi:mi-8;
+
+  const halfWidth=4*(BOX_W+COL_GAP); // R32→R16→QF→SF, 4 columns per side
+  const totalWidth=halfWidth*2+CENTER_GAP+BOX_W;
+  const totalHeight=( (BOX_H+ROW_GAP)*8 )+20; // 8 R32 matches per side, tallest column
+
+  // x-coordinate for a given side + round (0=R32 ... 3=SF)
+  const roundX=(side,ri)=>{
+    if(side==="left") return ri*(BOX_W+COL_GAP);
+    // right side mirrors: round 0 sits furthest right, round 3 closest to centre
+    return totalWidth-BOX_W-ri*(BOX_W+COL_GAP);
+  };
+  const finalX=halfWidth+CENTER_GAP/2;
+
+  // y-coordinate within a side — same doubling logic as before, but scoped
+  // to 8 matches (one side) instead of all 16.
+  const matchYSide=(ri,localMi)=>{
     const spacing=(BOX_H+ROW_GAP)*Math.pow(2,ri);
     const offset=spacing/2-(BOX_H+ROW_GAP)/2;
-    return offset+mi*spacing;
+    return offset+localMi*spacing;
   };
-  const totalHeight=matchY(0,15)+BOX_H+20;
-  const totalWidth=roundX(4)+BOX_W+20;
+  const finalY=matchYSide(3,0); // SF round (ri=3 within a side) centres the Final vertically
+
+  // Translate a global bracket matchIdx (0-15 for R32, 0-7 for R16, etc.)
+  // into {x,y} on screen, accounting for which side it's on.
+  const boxPos=(roundIdx,matchIdx)=>{
+    if(roundIdx===4){ // Final — single centred box
+      return {x:finalX,y:finalY};
+    }
+    // For rounds 0-3, global matchIdx spans both sides: first half = left,
+    // second half = right (mirrors the bracket[round] array layout already
+    // used by pickWinner/simulateAll — no data-model changes needed).
+    const matchesThisRound=Math.pow(2,3-roundIdx); // 16,8,4,2 for ri=0..3
+    const half=matchesThisRound/2;
+    const side=matchIdx<half?"left":"right";
+    const local=matchIdx<half?matchIdx:matchIdx-half;
+    return {x:roundX(side,roundIdx), y:matchYSide(roundIdx,local)};
+  };
 
   const Matchup=({roundIdx,matchIdx})=>{
     const m=bracket[roundIdx]?.[matchIdx];
+    const {x,y}=boxPos(roundIdx,matchIdx);
     if(!m||(!m.home&&!m.away)) return <div style={{
-      position:"absolute",left:roundX(roundIdx),top:matchY(roundIdx,matchIdx),
+      position:"absolute",left:x,top:y,
       width:BOX_W,height:BOX_H,border:`1px dashed ${C.line}`,borderRadius:4}}/>;
     const {winA,winB}=m.home&&m.away?M.matchOutcome(m.home,m.away):{winA:.5,winB:.5};
     const favPct=Math.round(Math.max(winA,winB)*100);
     const fav=winA>winB?m.home:m.away;
     return <div style={{
-      position:"absolute",left:roundX(roundIdx),top:matchY(roundIdx,matchIdx),
+      position:"absolute",left:x,top:y,
       width:BOX_W,height:BOX_H,borderRadius:5,border:`1.5px solid ${m.winner?C.gold:C.line}`,
       overflow:"hidden",background:C.panel,boxShadow:m.winner?"0 0 0 1px rgba(232,184,75,.25)":"none"}}>
       {[m.home,m.away].map((team,ti)=>{
@@ -3073,28 +3106,48 @@ function BracketSimulator(){
     </div>;
   };
 
-  // SVG connector lines — drawn between each match's right edge and the
-  // midpoint feeding into the next round's match. Mirrors the bracket-board
-  // photo: a horizontal stub out, vertical join, horizontal stub in.
-  const Connectors=({roundIdx})=>{
-    const count=Math.pow(2,3-roundIdx);
+  // SVG connector lines — drawn per side. On the left, lines run left→right
+  // into the centre; on the right, the same shape mirrored to run right→left.
+  // roundIdx 0..2 connect within a side (R32→R16→QF→SF); roundIdx 3 connects
+  // both sides' SF winners into the centred Final.
+  const ConnectorsSide=({side,roundIdx})=>{
+    const matchesThisRound=Math.pow(2,3-roundIdx);
+    const half=matchesThisRound/2;
     const lines=[];
-    for(let mi=0;mi<count;mi+=2){
-      const y1=matchY(roundIdx,mi)+BOX_H/2;
-      const y2=matchY(roundIdx,mi+1)+BOX_H/2;
+    for(let local=0;local<half;local+=2){
+      const y1=matchYSide(roundIdx,local)+BOX_H/2;
+      const y2=matchYSide(roundIdx,local+1)+BOX_H/2;
       const yMid=(y1+y2)/2;
-      const x1=roundX(roundIdx)+BOX_W;
-      const x2=x1+COL_GAP/2;
+      const boxX=roundX(side,roundIdx);
+      const x1=side==="left"?boxX+BOX_W:boxX;
+      const x2=side==="left"?x1+COL_GAP/2:x1-COL_GAP/2;
+      const x3=side==="left"?x2+COL_GAP/2:x2-COL_GAP/2;
       lines.push(
-        <g key={mi} stroke={C.line} strokeWidth="1.5" fill="none">
+        <g key={local} stroke={C.line} strokeWidth="1.5" fill="none">
           <line x1={x1} y1={y1} x2={x2} y2={y1}/>
           <line x1={x1} y1={y2} x2={x2} y2={y2}/>
           <line x1={x2} y1={y1} x2={x2} y2={y2}/>
-          <line x1={x2} y1={yMid} x2={x2+COL_GAP/2} y2={yMid}/>
+          <line x1={x2} y1={yMid} x2={x3} y2={yMid}/>
         </g>
       );
     }
     return <>{lines}</>;
+  };
+
+  // Final connector: both sides' SF winners (round 3, local index 0) feed
+  // into the centred Final box.
+  const FinalConnector=()=>{
+    const yL=matchYSide(3,0)+BOX_H/2;
+    const yR=matchYSide(3,0)+BOX_H/2;
+    const xL=roundX("left",3)+BOX_W;
+    const xR=roundX("right",3);
+    const yMid=finalY+BOX_H/2;
+    return <g stroke={C.line} strokeWidth="1.5" fill="none">
+      <line x1={xL} y1={yL} x2={finalX} y2={yL}/>
+      <line x1={finalX} y1={yL} x2={finalX} y2={yMid}/>
+      <line x1={xR} y1={yR} x2={finalX+BOX_W} y2={yR}/>
+      <line x1={finalX+BOX_W} y1={yR} x2={finalX+BOX_W} y2={yMid}/>
+    </g>;
   };
 
   return <div>
@@ -3119,24 +3172,38 @@ function BracketSimulator(){
       <div style={{font:`800 22px ${display}`,color:C.chalk}}>{champion}</div></div>
     </div>}
 
-    {/* Connected bracket tree — fixed-coordinate layout with real SVG connector lines */}
+    {/* Connected bracket tree — MIRROR layout: left half + right half converging on a centred Final */}
     <div style={{overflowX:"auto",paddingBottom:12,paddingTop:30}}>
       <div style={{position:"relative",width:totalWidth,height:totalHeight,minWidth:totalWidth}}>
-        {/* Round labels */}
-        {ROUNDS.map((label,ri)=>(
-          <div key={ri} style={{position:"absolute",left:roundX(ri),top:-26,width:BOX_W,
-            font:`700 9px ${mono}`,color:C.gold,letterSpacing:".1em",textAlign:"center"}}>{label}</div>
+        {/* Round labels — left side reads outside-in, right side mirrors it */}
+        {["Round of 32","Round of 16","Quarter-finals","Semi-finals"].map((label,ri)=>(
+          <span key={ri}>
+            <div style={{position:"absolute",left:roundX("left",ri),top:-26,width:BOX_W,
+              font:`700 9px ${mono}`,color:C.gold,letterSpacing:".08em",textAlign:"center"}}>{label}</div>
+            <div style={{position:"absolute",left:roundX("right",ri),top:-26,width:BOX_W,
+              font:`700 9px ${mono}`,color:C.gold,letterSpacing:".08em",textAlign:"center"}}>{label}</div>
+          </span>
         ))}
+        <div style={{position:"absolute",left:finalX,top:-26,width:BOX_W,
+          font:`700 9px ${mono}`,color:C.gold,letterSpacing:".08em",textAlign:"center"}}>Final</div>
+
         {/* Connector lines — SVG layer sits behind the match boxes */}
         <svg width={totalWidth} height={totalHeight} style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
-          <Connectors roundIdx={0}/><Connectors roundIdx={1}/><Connectors roundIdx={2}/><Connectors roundIdx={3}/>
+          <ConnectorsSide side="left" roundIdx={0}/><ConnectorsSide side="left" roundIdx={1}/><ConnectorsSide side="left" roundIdx={2}/>
+          <ConnectorsSide side="right" roundIdx={0}/><ConnectorsSide side="right" roundIdx={1}/><ConnectorsSide side="right" roundIdx={2}/>
+          <FinalConnector/>
         </svg>
+
+        {/* Centre soccer-ball motif behind the Final box, like the bracket-board photo */}
+        <div style={{position:"absolute",left:finalX+BOX_W/2-50,top:finalY+BOX_H+24,fontSize:64,opacity:.06,pointerEvents:"none"}}>⚽</div>
+
         {/* Match boxes — one absolutely-positioned box per round per slot */}
-        {ROUNDS.map((_,ri)=>
+        {[0,1,2,3].map(ri=>
           Array.from({length:Math.pow(2,3-ri)}).map((_,mi)=>(
             <Matchup key={`${ri}-${mi}`} roundIdx={ri} matchIdx={mi}/>
           ))
         )}
+        <Matchup roundIdx={4} matchIdx={0}/>
       </div>
     </div>
     <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16}}>
