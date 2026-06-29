@@ -1,10 +1,6 @@
-// api/live.js
-import { fetchLiveAndToday } from "../lib/provider.js";
-import { cacheGet, cacheSet, KEYS, TTL } from "../lib/cache.js";
-
-// api/cron/refresh.js
 import { fetchLiveAndToday, fetchStandings, fetchScorers } from "../../lib/provider.js";
 import { cacheSet, cacheGet, KEYS, TTL } from "../../lib/cache.js";
+import { fetchBracket } from "../../lib/bracket.js";
 
 /**
  * The "intelligent pull on an interval" engine.
@@ -40,6 +36,12 @@ export default async function handler(req, res) {
       const standings = await fetchStandings();
       await cacheSet(KEYS.standings, standings, TTL.standings);
       did.push("standings");
+    }
+    try {
+      const bracket = await fetchBracket();
+      await cacheSet("wc:bracket:state", bracket, 60 * 60 * 6); // 6h TTL
+    } catch (e) {
+      console.error("[cron] bracket sync failed:", e.message);
     }
 
     // 3. Scorers — refresh only if stale.
