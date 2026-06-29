@@ -2959,7 +2959,7 @@ function BracketSimulator(){
   },[]);
 
   // Merge: real R32 (if present) overrides Elo seed; carry over real winners.
-  const bracket=useMemo(()=>{
+  const bracket=React.useMemo(()=>{
     const ROUNDS=[
       {key:"R32",label:"Round of 32",size:16},
       {key:"R16",label:"Round of 16",size:8},
