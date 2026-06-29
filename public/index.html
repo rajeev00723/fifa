@@ -2928,289 +2928,235 @@ function NewsFeed(){
 // We seed from Elo ratings — top 16 vs bottom 16 by rating order
 function BracketSimulator(){
   const M=window.WCModel;
-  const allTeams=Object.keys(M.RATINGS).sort((a,b)=>M.rating(b)-M.rating(a));
-  // Seeds: top 16 (1-16) vs bottom 16 (17-32 reversed for bracket balance)
-  const top=allTeams.slice(0,16);
-  const bot=allTeams.slice(16,32);
-  const initMatchups=top.map((t,i)=>({home:t,away:bot[15-i]}));
+  const [live,setLive]=useState(null);    // server bracket state
+  const [loading,setLoading]=useState(true);
+  const [picks,setPicks]=useState({});    // userId-style: {matchKey: "team name"}
+  const [error,setError]=useState(null);
 
-  const ROUNDS=["Round of 32","Round of 16","Quarter-finals","Semi-finals","Final"];
-  const [bracket,setBracket]=useState(()=>{
-    // bracket[round] = array of {home,away,winner}
-    return [initMatchups.map(m=>({...m,winner:null})),...Array(4).fill(null).map(()=>[])];
-  });
-  const [view,setView]=useState("bracket"); // "bracket" | "share"
-  const [shareMsg,setShareMsg]=useState(null);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        const r=await fetch("/api/standings?action=bracket");
+        if(!r.ok) throw new Error("HTTP "+r.status);
+        const j=await r.json();
+        if(!cancelled) setLive(j);
+      }catch(e){
+        if(!cancelled) setError(e.message);
+      }finally{
+        if(!cancelled) setLoading(false);
+      }
+    })();
+    return ()=>{cancelled=true};
+  },[]);
 
-  const simulateMatch=(home,away)=>{
-    const {winA,winB}=M.matchOutcome(home,away);
-    return Math.random()<winA/(winA+winB)?home:away;
-  };
+  // Build Elo-seeded fallback bracket
+  const eloSeed=useMemo(()=>{
+    const allTeams=Object.keys(M.RATINGS).sort((a,b)=>M.rating(b)-M.rating(a));
+    const top=allTeams.slice(0,16);
+    const bot=allTeams.slice(16,32);
+    return top.map((t,i)=>({home:t,away:bot[15-i]}));
+  },[]);
 
-  const pickWinner=(roundIdx,matchIdx,winner)=>{
-    setBracket(prev=>{
-      const next=prev.map(r=>r.map(m=>({...m})));
-      next[roundIdx][matchIdx].winner=winner;
-      // Advance winner to next round
-      const nextRound=roundIdx+1;
-      if(nextRound<=4){
-        const slot=Math.floor(matchIdx/2);
-        if(!next[nextRound][slot]) next[nextRound][slot]={home:null,away:null,winner:null};
-        if(matchIdx%2===0) next[nextRound][slot].home=winner;
-        else next[nextRound][slot].away=winner;
-        // Clear any downstream winners when re-picking
-        for(let r=nextRound;r<=4;r++){
-          const s=Math.floor(matchIdx/Math.pow(2,r-roundIdx));
-          if(next[r][s]){
-            if(r>nextRound) next[r][s]={home:null,away:null,winner:null};
-            else { next[r][s].winner=null; }
+  // Merge: real R32 (if present) overrides Elo seed; carry over real winners.
+  const bracket=useMemo(()=>{
+    const ROUNDS=[
+      {key:"R32",label:"Round of 32",size:16},
+      {key:"R16",label:"Round of 16",size:8},
+      {key:"QF",label:"Quarter-finals",size:4},
+      {key:"SF",label:"Semi-finals",size:2},
+      {key:"F",label:"Final",size:1},
+    ];
+    const out={};
+    const realByStage=live?Object.fromEntries(live.rounds.map(r=>[r.stage,r.matches])):{};
+
+    // R32: real if available, else Elo
+    if(realByStage.R32 && realByStage.R32.length===16){
+      out.R32=realByStage.R32.map(m=>({
+        home:m.home,away:m.away,
+        homeFlag:m.homeTla,awayFlag:m.awayTla,
+        realWinner:m.winner,locked:m.finished,
+        score:m.finished?`${m.homeScore}-${m.awayScore}`+(m.pensHome!=null?` (${m.pensHome}-${m.pensAway} pens)`:""):null,
+        live:m.live,utcDate:m.utcDate,realData:true,
+      }));
+    } else {
+      out.R32=eloSeed.map(m=>({...m,realData:false}));
+    }
+
+    // R16+: real if populated, else derived from R32 winners
+    for(let i=1;i<ROUNDS.length;i++){
+      const prev=ROUNDS[i-1].key, cur=ROUNDS[i].key;
+      const realMatches=realByStage[cur]||[];
+      out[cur]=[];
+      for(let j=0;j<ROUNDS[i].size;j++){
+        const real=realMatches[j];
+        if(real && real.home && real.away){
+          out[cur].push({
+            home:real.home,away:real.away,
+            homeFlag:real.homeTla,awayFlag:real.awayTla,
+            realWinner:real.winner,locked:real.finished,
+            score:real.finished?`${real.homeScore}-${real.awayScore}`+(real.pensHome!=null?` (${real.pensHome}-${real.pensAway} pens)`:""):null,
+            live:real.live,utcDate:real.utcDate,realData:true,
+          });
+        } else {
+          // Derive from prev round winners (real or user picks)
+          const m1=out[prev][j*2], m2=out[prev][j*2+1];
+          const w1=winnerOf(m1,picks,`${prev}-${j*2}`);
+          const w2=winnerOf(m2,picks,`${prev}-${j*2+1}`);
+          out[cur].push({home:w1,away:w2,realData:false,locked:false});
+        }
+      }
+    }
+    return {ROUNDS,out};
+  },[live,eloSeed,picks]);
+
+  function winnerOf(match,picks,key){
+    if(!match) return null;
+    if(match.realWinner) return match.realWinner;
+    if(picks[key]) return picks[key];
+    return null;
+  }
+
+  function pick(stageKey,idx,team){
+    const m=bracket.out[stageKey][idx];
+    if(m && m.locked) return;     // can't override real finished matches
+    setPicks(p=>{
+      const next={...p};
+      next[`${stageKey}-${idx}`]=team;
+      // Clear downstream picks affected by this change
+      const rIdx=bracket.ROUNDS.findIndex(r=>r.key===stageKey);
+      for(let i=rIdx+1;i<bracket.ROUNDS.length;i++){
+        const k=bracket.ROUNDS[i].key;
+        const size=bracket.ROUNDS[i].size;
+        for(let j=0;j<size;j++) delete next[`${k}-${j}`];
+      }
+      return next;
+    });
+  }
+
+  function simulateAll(){
+    // Auto-pick unlocked matches using Elo expectation
+    setPicks(p=>{
+      const next={...p};
+      for(const r of bracket.ROUNDS){
+        for(let j=0;j<bracket.out[r.key].length;j++){
+          const m=bracket.out[r.key][j];
+          if(!m || m.locked || m.realWinner) continue;
+          // resolve current home/away (may depend on picks already in next)
+          let h=m.home, a=m.away;
+          if(!h || !a){
+            // need to derive from previous round using `next` picks too
+            const ri=bracket.ROUNDS.findIndex(x=>x.key===r.key);
+            if(ri>0){
+              const pk=bracket.ROUNDS[ri-1].key;
+              const pm1=bracket.out[pk][j*2], pm2=bracket.out[pk][j*2+1];
+              h=h||pm1?.realWinner||next[`${pk}-${j*2}`]||null;
+              a=a||pm2?.realWinner||next[`${pk}-${j*2+1}`]||null;
+            }
           }
+          if(!h||!a) continue;
+          const rh=M.rating(h), ra=M.rating(a);
+          const pHome=1/(1+Math.pow(10,(ra-rh)/400));
+          next[`${r.key}-${j}`]=Math.random()<pHome?h:a;
         }
       }
       return next;
     });
-  };
+  }
 
-  const simulateRound=(roundIdx)=>{
-    setBracket(prev=>{
-      const next=prev.map(r=>r.map(m=>({...m})));
-      const matches=next[roundIdx];
-      matches.forEach((m,i)=>{
-        if(m.home&&m.away&&!m.winner){
-          const w=simulateMatch(m.home,m.away);
-          next[roundIdx][i].winner=w;
-          const nextRound=roundIdx+1;
-          if(nextRound<=4){
-            const slot=Math.floor(i/2);
-            if(!next[nextRound][slot]) next[nextRound][slot]={home:null,away:null,winner:null};
-            if(i%2===0) next[nextRound][slot].home=w;
-            else next[nextRound][slot].away=w;
-          }
-        }
-      });
-      return next;
-    });
-  };
+  function reset(){ setPicks({}); }
 
-  const simulateAll=()=>{
-    let b=[initMatchups.map(m=>({...m,winner:null})),...Array(4).fill(null).map(()=>[])];
-    for(let r=0;r<4;r++){
-      const matches=b[r];
-      matches.forEach((m,i)=>{
-        if(m.home&&m.away){
-          const w=simulateMatch(m.home,m.away);
-          b[r][i].winner=w;
-          const slot=Math.floor(i/2);
-          if(!b[r+1][slot]) b[r+1][slot]={home:null,away:null,winner:null};
-          if(i%2===0) b[r+1][slot].home=w;
-          else b[r+1][slot].away=w;
-        }
-      });
-    }
-    setBracket(b);
-  };
+  function shareBracket(){
+    const finalMatch=bracket.out.F[0];
+    if(!finalMatch) return;
+    const h=finalMatch.home||"TBD", a=finalMatch.away||"TBD";
+    const champ=finalMatch.realWinner||picks["F-0"]||"TBD";
+    const txt=`My 2026 World Cup bracket predicts a ${h} vs ${a} Final, with ${champ} lifting the trophy! Build yours at fifa.rajeevbuilds.dev #WorldCup2026`;
+    navigator.clipboard.writeText(txt);
+    alert("Copied to clipboard!");
+  }
 
-  const reset=()=>setBracket([initMatchups.map(m=>({...m,winner:null})),...Array(4).fill(null).map(()=>[])]);
+  if(loading) return <div style={{padding:24,opacity:.7}}>Loading bracket…</div>;
 
-  const champion=bracket[4]?.[0]?.winner;
-  const finalist1=bracket[3]?.[0]?.winner;
-  const finalist2=bracket[3]?.[1]?.winner;
+  const updatedMin=live?Math.round((Date.now()-new Date(live.updatedAt))/60000):null;
+  const hasRealR32=live && live.counts && live.counts.R32===16;
 
-  const genShare=()=>{
-    const msg=champion
-      ?`My 2026 World Cup bracket predicts a ${finalist1||"?"} vs ${finalist2||"?"} Final, with ${champion} lifting the trophy! Can you do better? Build your bracket at fifa.rajeevbuilds.dev #WorldCup2026`
-      :"Complete your bracket first, then share!";
-    setShareMsg(msg);
-    if(champion) navigator.clipboard?.writeText(msg).catch(()=>{});
-  };
-
-  // ── Bracket geometry: MIRROR layout ──────────────────────────────────────
-  // Matches 0-7 (left half of the draw) grow rightward toward the centre.
-  // Matches 8-15 (right half) are mirrored, growing leftward toward the
-  // centre. Round of 16 / QF / SF on each side feed into a single centred
-  // Final box — same visual grammar as a physical bracket-board poster.
-  const BOX_H=50, BOX_W=148, COL_GAP=56, ROW_GAP=12, CENTER_GAP=70;
-
-  // Which side of the draw a Round-of-32 match index belongs to
-  const sideOf=(mi)=>mi<8?"left":"right";
-  // Local index within that side, 0-7
-  const localIdx=(mi)=>mi<8?mi:mi-8;
-
-  const halfWidth=4*(BOX_W+COL_GAP); // R32→R16→QF→SF, 4 columns per side
-  const totalWidth=halfWidth*2+CENTER_GAP+BOX_W;
-  const totalHeight=( (BOX_H+ROW_GAP)*8 )+20; // 8 R32 matches per side, tallest column
-
-  // x-coordinate for a given side + round (0=R32 ... 3=SF)
-  const roundX=(side,ri)=>{
-    if(side==="left") return ri*(BOX_W+COL_GAP);
-    // right side mirrors: round 0 sits furthest right, round 3 closest to centre
-    return totalWidth-BOX_W-ri*(BOX_W+COL_GAP);
-  };
-  const finalX=halfWidth+CENTER_GAP/2;
-
-  // y-coordinate within a side — same doubling logic as before, but scoped
-  // to 8 matches (one side) instead of all 16.
-  const matchYSide=(ri,localMi)=>{
-    const spacing=(BOX_H+ROW_GAP)*Math.pow(2,ri);
-    const offset=spacing/2-(BOX_H+ROW_GAP)/2;
-    return offset+localMi*spacing;
-  };
-  const finalY=matchYSide(3,0); // SF round (ri=3 within a side) centres the Final vertically
-
-  // Translate a global bracket matchIdx (0-15 for R32, 0-7 for R16, etc.)
-  // into {x,y} on screen, accounting for which side it's on.
-  const boxPos=(roundIdx,matchIdx)=>{
-    if(roundIdx===4){ // Final — single centred box
-      return {x:finalX,y:finalY};
-    }
-    // For rounds 0-3, global matchIdx spans both sides: first half = left,
-    // second half = right (mirrors the bracket[round] array layout already
-    // used by pickWinner/simulateAll — no data-model changes needed).
-    const matchesThisRound=Math.pow(2,3-roundIdx); // 16,8,4,2 for ri=0..3
-    const half=matchesThisRound/2;
-    const side=matchIdx<half?"left":"right";
-    const local=matchIdx<half?matchIdx:matchIdx-half;
-    return {x:roundX(side,roundIdx), y:matchYSide(roundIdx,local)};
-  };
-
-  const Matchup=({roundIdx,matchIdx})=>{
-    const m=bracket[roundIdx]?.[matchIdx];
-    const {x,y}=boxPos(roundIdx,matchIdx);
-    if(!m||(!m.home&&!m.away)) return <div style={{
-      position:"absolute",left:x,top:y,
-      width:BOX_W,height:BOX_H,border:`1px dashed ${C.line}`,borderRadius:4}}/>;
-    const {winA,winB}=m.home&&m.away?M.matchOutcome(m.home,m.away):{winA:.5,winB:.5};
-    const favPct=Math.round(Math.max(winA,winB)*100);
-    const fav=winA>winB?m.home:m.away;
-    return <div style={{
-      position:"absolute",left:x,top:y,
-      width:BOX_W,height:BOX_H,borderRadius:5,border:`1.5px solid ${m.winner?C.gold:C.line}`,
-      overflow:"hidden",background:C.panel,boxShadow:m.winner?"0 0 0 1px rgba(232,184,75,.25)":"none"}}>
-      {[m.home,m.away].map((team,ti)=>{
-        if(!team) return <div key={ti} style={{padding:"5px 8px",background:C.pitch2,height:BOX_H/2,display:"flex",alignItems:"center",borderBottom:ti===0?`1px solid ${C.line}`:"none"}}>
-          <span style={{font:`10px ${mono}`,color:C.mute}}>TBD</span>
-        </div>;
-        const isWinner=m.winner===team;
-        const isLoser=m.winner&&m.winner!==team;
-        return <div key={ti} onClick={()=>m.home&&m.away&&pickWinner(roundIdx,matchIdx,team)}
-          style={{padding:"5px 8px",height:BOX_H/2,background:isWinner?"rgba(232,184,75,.14)":C.pitch2,
-            borderBottom:ti===0?`1px solid ${C.line}`:"none",
-            cursor:m.home&&m.away?"pointer":"default",
-            opacity:isLoser?.4:1,transition:"all .15s",
-            display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}}>
-          <span style={{font:`600 11px ${display}`,color:isWinner?C.gold:C.chalk,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>{flagOf(team)} {team}</span>
-          {team===fav&&m.home&&m.away&&!m.winner&&<span style={{font:`8px ${mono}`,color:C.gold,flexShrink:0}}>{favPct}%</span>}
-          {isWinner&&<span style={{color:C.gold,flexShrink:0,fontSize:9}}>✓</span>}
-        </div>;
-      })}
-    </div>;
-  };
-
-  // SVG connector lines — drawn per side. On the left, lines run left→right
-  // into the centre; on the right, the same shape mirrored to run right→left.
-  // roundIdx 0..2 connect within a side (R32→R16→QF→SF); roundIdx 3 connects
-  // both sides' SF winners into the centred Final.
-  const ConnectorsSide=({side,roundIdx})=>{
-    const matchesThisRound=Math.pow(2,3-roundIdx);
-    const half=matchesThisRound/2;
-    const lines=[];
-    for(let local=0;local<half;local+=2){
-      const y1=matchYSide(roundIdx,local)+BOX_H/2;
-      const y2=matchYSide(roundIdx,local+1)+BOX_H/2;
-      const yMid=(y1+y2)/2;
-      const boxX=roundX(side,roundIdx);
-      const x1=side==="left"?boxX+BOX_W:boxX;
-      const x2=side==="left"?x1+COL_GAP/2:x1-COL_GAP/2;
-      const x3=side==="left"?x2+COL_GAP/2:x2-COL_GAP/2;
-      lines.push(
-        <g key={local} stroke={C.line} strokeWidth="1.5" fill="none">
-          <line x1={x1} y1={y1} x2={x2} y2={y1}/>
-          <line x1={x1} y1={y2} x2={x2} y2={y2}/>
-          <line x1={x2} y1={y1} x2={x2} y2={y2}/>
-          <line x1={x2} y1={yMid} x2={x3} y2={yMid}/>
-        </g>
-      );
-    }
-    return <>{lines}</>;
-  };
-
-  // Final connector: both sides' SF winners (round 3, local index 0) feed
-  // into the centred Final box.
-  const FinalConnector=()=>{
-    const yL=matchYSide(3,0)+BOX_H/2;
-    const yR=matchYSide(3,0)+BOX_H/2;
-    const xL=roundX("left",3)+BOX_W;
-    const xR=roundX("right",3);
-    const yMid=finalY+BOX_H/2;
-    return <g stroke={C.line} strokeWidth="1.5" fill="none">
-      <line x1={xL} y1={yL} x2={finalX} y2={yL}/>
-      <line x1={finalX} y1={yL} x2={finalX} y2={yMid}/>
-      <line x1={xR} y1={yR} x2={finalX+BOX_W} y2={yR}/>
-      <line x1={finalX+BOX_W} y1={yR} x2={finalX+BOX_W} y2={yMid}/>
-    </g>;
-  };
-
-  return <div>
-    <H2 eyebrow="Interactive — 2026 Bracket" title="Predict the knockout bracket"/>
-    <p style={{font:`13px/1.5 ${display}`,color:C.mute,margin:"0 0 16px",maxWidth:600}}>
-      Click any player in a match to pick your winner. Use AI Simulate to let the Elo model pick, or simulate all rounds at once. Seeded by pre-tournament Elo ratings.
-    </p>
-    <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-      <button onClick={simulateAll} style={{font:`600 12px ${mono}`,padding:"9px 16px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.gold}`,background:C.gold,color:C.pitch}}>Simulate All (AI)</button>
-      <button onClick={reset} style={{font:`600 12px ${mono}`,padding:"9px 16px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.line}`,background:"transparent",color:C.mute}}>Reset</button>
-      <button onClick={genShare} style={{font:`600 12px ${mono}`,padding:"9px 16px",cursor:"pointer",borderRadius:4,border:`1px solid ${C.grass}`,background:"transparent",color:C.grass}}>Share my bracket</button>
-    </div>
-
-    {shareMsg&&<div style={{padding:"12px 16px",borderRadius:4,background:"rgba(63,174,111,.08)",border:`1px solid ${C.grass}`,marginBottom:16,font:`12px/1.5 ${display}`,color:C.chalk}}>
-      <div style={{font:`600 10px ${mono}`,color:C.grass,marginBottom:4}}>COPIED TO CLIPBOARD</div>
-      {shareMsg}
-    </div>}
-
-    {champion&&<div style={{padding:"14px 16px",borderRadius:4,background:"rgba(232,184,75,.1)",border:`1px solid ${C.gold}`,marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
-      <span style={{fontSize:28}}>🏆</span>
-      <div><div style={{font:`700 11px ${mono}`,color:C.gold,letterSpacing:".1em"}}>YOUR PREDICTED CHAMPION</div>
-      <div style={{font:`800 22px ${display}`,color:C.chalk}}>{champion}</div></div>
-    </div>}
-
-    {/* Connected bracket tree — MIRROR layout: left half + right half converging on a centred Final */}
-    <div style={{overflowX:"auto",paddingBottom:12,paddingTop:30}}>
-      <div style={{position:"relative",width:totalWidth,height:totalHeight,minWidth:totalWidth}}>
-        {/* Round labels — left side reads outside-in, right side mirrors it */}
-        {["Round of 32","Round of 16","Quarter-finals","Semi-finals"].map((label,ri)=>(
-          <span key={ri}>
-            <div style={{position:"absolute",left:roundX("left",ri),top:-26,width:BOX_W,
-              font:`700 9px ${mono}`,color:C.gold,letterSpacing:".08em",textAlign:"center"}}>{label}</div>
-            <div style={{position:"absolute",left:roundX("right",ri),top:-26,width:BOX_W,
-              font:`700 9px ${mono}`,color:C.gold,letterSpacing:".08em",textAlign:"center"}}>{label}</div>
+  return (
+    <div style={{padding:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:16}}>
+        <h2 style={{margin:0}}>Bracket Simulator</h2>
+        {hasRealR32 ? (
+          <span style={{background:"#16a34a",color:"#fff",padding:"2px 10px",borderRadius:12,fontSize:12,fontWeight:600}}>
+            LIVE DATA
           </span>
-        ))}
-        <div style={{position:"absolute",left:finalX,top:-26,width:BOX_W,
-          font:`700 9px ${mono}`,color:C.gold,letterSpacing:".08em",textAlign:"center"}}>Final</div>
-
-        {/* Connector lines — SVG layer sits behind the match boxes */}
-        <svg width={totalWidth} height={totalHeight} style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
-          <ConnectorsSide side="left" roundIdx={0}/><ConnectorsSide side="left" roundIdx={1}/><ConnectorsSide side="left" roundIdx={2}/>
-          <ConnectorsSide side="right" roundIdx={0}/><ConnectorsSide side="right" roundIdx={1}/><ConnectorsSide side="right" roundIdx={2}/>
-          <FinalConnector/>
-        </svg>
-
-        {/* Centre soccer-ball motif behind the Final box, like the bracket-board photo */}
-        <div style={{position:"absolute",left:finalX+BOX_W/2-50,top:finalY+BOX_H+24,fontSize:64,opacity:.06,pointerEvents:"none"}}>⚽</div>
-
-        {/* Match boxes — one absolutely-positioned box per round per slot */}
-        {[0,1,2,3].map(ri=>
-          Array.from({length:Math.pow(2,3-ri)}).map((_,mi)=>(
-            <Matchup key={`${ri}-${mi}`} roundIdx={ri} matchIdx={mi}/>
-          ))
+        ) : (
+          <span style={{background:"#6b7280",color:"#fff",padding:"2px 10px",borderRadius:12,fontSize:12}}>
+            ELO PROJECTION
+          </span>
         )}
-        <Matchup roundIdx={4} matchIdx={0}/>
+        {updatedMin!=null && <span style={{opacity:.6,fontSize:12}}>Updated {updatedMin}m ago</span>}
+        {error && <span style={{color:"#ef4444",fontSize:12}}>Live data unavailable — showing Elo seed</span>}
+        <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+          <button onClick={simulateAll} style={{padding:"6px 12px"}}>Simulate All (AI)</button>
+          <button onClick={reset} style={{padding:"6px 12px"}}>Reset Picks</button>
+          <button onClick={shareBracket} style={{padding:"6px 12px"}}>Share</button>
+        </div>
       </div>
+
+      <div style={{overflowX:"auto"}}>
+        <div style={{display:"flex",gap:24,minWidth:1200}}>
+          {bracket.ROUNDS.map(round=>(
+            <div key={round.key} style={{flex:1,minWidth:200}}>
+              <h3 style={{fontSize:14,opacity:.7,marginBottom:8}}>{round.label}</h3>
+              <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",height:`${16*48}px`,gap:0}}>
+                {bracket.out[round.key].map((m,i)=>{
+                  const pickKey=`${round.key}-${i}`;
+                  const userPick=picks[pickKey];
+                  const winner=m.realWinner||userPick;
+                  return (
+                    <div key={i} style={{
+                      border:m.live?"2px solid #f59e0b":m.locked?"2px solid #16a34a":"1px solid #444",
+                      borderRadius:6,padding:6,fontSize:12,background:m.realData?"#1f2937":"#111827",margin:"4px 0"
+                    }}>
+                      {[m.home,m.away].map((team,j)=>{
+                        const isWinner=team && winner===team;
+                        const isPickable=team && !m.locked && !m.realWinner;
+                        return (
+                          <div key={j}
+                            onClick={()=>isPickable&&pick(round.key,i,team)}
+                            style={{
+                              padding:"4px 6px",
+                              cursor:isPickable?"pointer":"default",
+                              fontWeight:isWinner?700:400,
+                              opacity:team?1:.4,
+                              color:isWinner?"#fbbf24":"#e5e7eb",
+                              borderLeft:isWinner?"3px solid #fbbf24":"3px solid transparent",
+                            }}>
+                            {team||"TBD"}
+                          </div>
+                        );
+                      })}
+                      {m.score && <div style={{fontSize:10,opacity:.7,textAlign:"center",marginTop:2}}>{m.score}</div>}
+                      {m.live && <div style={{fontSize:10,color:"#f59e0b",textAlign:"center"}}>LIVE</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {bracket.out.F[0] && (bracket.out.F[0].realWinner||picks["F-0"]) && (
+        <div style={{marginTop:24,padding:16,background:"linear-gradient(90deg,#fbbf24,#f59e0b)",borderRadius:8,textAlign:"center"}}>
+          🏆 <strong>{bracket.out.F[0].realWinner||picks["F-0"]}</strong> {bracket.out.F[0].realWinner?"wins the World Cup!":"is your predicted champion"}
+        </div>
+      )}
     </div>
-    <div style={{font:`11px ${mono}`,color:C.mute,marginTop:16}}>
-      Click any team name to pick them as the winner. AI Simulate uses Elo win probabilities to auto-pick each match. Scroll horizontally to see the full bracket on smaller screens.
-    </div>
-  </div>;
+  );
 }
+
+
 
 /* ===================== MATCH HIGHLIGHT VIDEO ===================== */
 // Looks up an official YouTube highlight video for a finished match.
